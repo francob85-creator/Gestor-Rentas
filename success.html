@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GestorRenta — ¡Pago exitoso!</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f0e8;
+    --surface: #fdfaf4;
+    --border: #d9cfb8;
+    --accent: #2d6a4f;
+    --accent2: #1b4332;
+    --text: #2c2416;
+    --text3: #9e8e76;
+    --gold: #c8a85a;
+    --success: #2d6a4f;
+    --success-light: #e8f5e9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 48px 40px;
+    max-width: 480px;
+    width: 92%;
+    text-align: center;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+  }
+  .icon { font-size: 64px; margin-bottom: 16px; }
+  .title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 28px;
+    margin-bottom: 8px;
+    color: var(--success);
+  }
+  .sub {
+    font-size: 15px;
+    color: var(--text3);
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+  .btn {
+    display: inline-block;
+    padding: 14px 32px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: var(--accent2); }
+  .confetti {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<canvas class="confetti" id="confetti"></canvas>
+
+<div class="card">
+  <div class="icon">🎉</div>
+  <div class="title">¡Pago exitoso!</div>
+  <div class="sub">
+    Tu suscripción a GestorRenta está activa.<br>
+    Ya puedes disfrutar de todas las funciones de tu plan.
+  </div>
+  <a href="GESTOR_DE_RENTAS.html" class="btn">Ir a GestorRenta →</a>
+</div>
+
+<script>
+// Simple confetti animation
+const canvas = document.getElementById('confetti');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const pieces = [];
+const colors = ['#2d6a4f','#c8a85a','#e8f5e9','#1b4332','#f5f0e8','#ff6b6b','#4ecdc4'];
+
+for (let i = 0; i < 100; i++) {
+  pieces.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height - canvas.height,
+    w: Math.random() * 10 + 5,
+    h: Math.random() * 6 + 3,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    vy: Math.random() * 3 + 2,
+    vx: (Math.random() - 0.5) * 2,
+    rot: Math.random() * 360,
+    vrot: (Math.random() - 0.5) * 10,
+  });
+}
+
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let alive = false;
+  pieces.forEach(p => {
+    if (p.y > canvas.height + 20) return;
+    alive = true;
+    p.y += p.vy;
+    p.x += p.vx;
+    p.rot += p.vrot;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot * Math.PI / 180);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+    ctx.restore();
+  });
+  if (alive) requestAnimationFrame(animate);
+}
+animate();
+</script>
+
+</body>
+</html>
