@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GestorRenta — Gestión de rentas e inquilinos</title>
+<meta name="description" content="La plataforma más completa para administrar propiedades en renta. Controla inquilinos, pagos, contratos y adeudos desde cualquier dispositivo.">
+<meta name="theme-color" content="#1b3a2d">
+<link rel="canonical" href="https://gestorrenta.com">
+
+<!-- Open Graph -->
+<meta property="og:title" content="GestorRenta — Gestión de rentas e inquilinos">
+<meta property="og:description" content="Administra tus propiedades en renta de forma profesional. Controla pagos, inquilinos y contratos.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gestorrenta.com">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ═══════════════════════════════════════════
+   DESIGN SYSTEM
+   Aesthetic: Refined luxury meets warm earth tones
+   ═══════════════════════════════════════════ */
+:root {
+  --bg: #faf7f2;
+  --bg-deep: #1b3a2d;
+  --bg-deep2: #142e23;
+  --surface: #ffffff;
+  --surface-warm: #f5f0e8;
+  --border: #e2d9c8;
+  --border-light: #ede7da;
+  --accent: #2d6a4f;
+  --accent-dark: #1b4332;
+  --accent-light: #e8f5e9;
+  --gold: #c8a85a;
+  --gold-light: #f7f0dd;
+  --danger: #c0392b;
+  --text: #1a1a1a;
+  --text2: #4a4a4a;
+  --text3: #8a8070;
+  --text-on-dark: #d4e8dc;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 48px rgba(0,0,0,0.1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══ UTILITIES ═══ */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.fade-up {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fade-up.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.delay-1 { transition-delay: 0.1s; }
+.delay-2 { transition-delay: 0.2s; }
+.delay-3 { transition-delay: 0.3s; }
+.delay-4 { transition-delay: 0.4s; }
+
+/* ═══ NAVBAR ═══ */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 16px 0;
+  transition: all 0.4s;
+}
+.navbar.scrolled {
+  background: rgba(250, 247, 242, 0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-light);
+  padding: 10px 0;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.04);
+}
+.navbar .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-logo {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 26px;
+  color: var(--gold);
+  text-decoration: none;
+}
+.nav-logo span { color: var(--text3); font-style: italic; }
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--accent); }
+.nav-cta {
+  background: var(--accent) !important;
+  color: #fff !important;
+  padding: 10px 24px !important;
+  border-radius: 50px !important;
+  font-weight: 600 !important;
+  transition: background 0.2s, transform 0.2s !important;
+}
+.nav-cta:hover { background: var(--accent-dark) !important; transform: translateY(-1px); }
+.nav-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 5px;
+}
+.nav-hamburger span {
+  display: block;
+  width: 24px;
+  height: 2px;
+  background: var(--text);
+  transition: all 0.3s;
+}
+
+/* ═══ HERO ═══ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(165deg, var(--bg) 0%, var(--surface-warm) 50%, #ede7da 100%);
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -200px;
+  right: -200px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(200,168,90,0.08) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: -150px;
+  left: -100px;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(45,106,79,0.06) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.hero .container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+  padding-top: 100px;
+  padding-bottom: 80px;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--gold-light);
+  border: 1px solid rgba(200,168,90,0.3);
+  border-radius: 50px;
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #92700e;
+  margin-bottom: 24px;
+}
+.hero-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--gold);
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+.hero h1 {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(40px, 5.5vw, 64px);
+  line-height: 1.1;
+  color: var(--text);
+  margin-bottom: 20px;
+  letter-spacing: -1px;
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+.hero-sub {
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--text2);
+  margin-bottom: 36px;
+  max-width: 480px;
+  font-weight: 400;
+}
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.btn-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 36px;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-hero-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(45,106,79,0.3);
+}
+.btn-hero-primary:hover {
+  background: var(--accent-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(45,106,79,0.35);
+}
+.btn-hero-ghost {
+  background: transparent;
+  color: var(--text2);
+  border: 2px solid var(--border);
+}
+.btn-hero-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.hero-note {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text3);
+}
+.hero-note strong { color: var(--accent); }
+
+/* Hero visual */
+.hero-visual {
+  position: relative;
+}
+.hero-mockup {
+  width: 100%;
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,0.04);
+  background: var(--surface);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.hero-mockup-bar {
+  background: var(--surface-warm);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.hero-mockup-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.hero-mockup-dot:first-child { background: #ff6b6b; }
+.hero-mockup-dot:nth-child(2) { background: #ffd93d; }
+.hero-mockup-dot:nth-child(3) { background: #6bcb77; }
+.hero-mockup-body {
+  padding: 20px;
+  background: var(--bg);
+  min-height: 380px;
+}
+.mock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.mock-logo {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  color: var(--gold);
+}
+.mock-logo span { color: var(--text3); font-style: italic; }
+.mock-stats {
+  display: flex;
+  gap: 16px;
+}
+.mock-stat-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mock-stat-val.green { color: var(--accent); }
+.mock-stat-val.red { color: var(--danger); }
+.mock-stat-label { font-size: 9px; color: var(--text3); text-transform: uppercase; }
+.mock-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.mock-kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  border-top: 3px solid var(--accent);
+}
+.mock-kpi.gold { border-top-color: var(--gold); }
+.mock-kpi.red { border-top-color: var(--danger); }
+.mock-kpi-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 18px;
+  font-weight: 600;
+}
+.mock-kpi-label { font-size: 9px; color: var(--text3); text-transform: uppercase; margin-top: 3px; }
+.mock-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.mock-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  border-top: 3px solid var(--accent);
+}
+.mock-card.warn { border-top-color: var(--gold); }
+.mock-card.alert { border-top-color: var(--danger); }
+.mock-card-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.mock-card-sub { font-size: 11px; color: var(--text3); margin-bottom: 8px; }
+.mock-card-row { display: flex; justify-content: space-between; }
+.mock-card-amt { font-family: 'DM Mono', monospace; font-size: 12px; }
+.mock-card-amt.green { color: var(--accent); }
+.mock-card-amt.red { color: var(--danger); }
+.mock-badge {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+}
+.mock-badge.ok { background: var(--accent-light); color: var(--accent); }
+.mock-badge.late { background: #fef2f2; color: var(--danger); }
+.mock-badge.partial { background: var(--gold-light); color: #92700e; }
+
+/* Floating elements */
+.float-card {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 18px;
+  box-shadow: var(--shadow-lg);
+  animation: float 6s ease-in-out infinite;
+  z-index: 2;
+}
+@keyframes float {
+  0%,100% { transform: translateY(0) } 50% { transform: translateY(-10px) }
+}
+.float-1 {
+  top: 20px;
+  right: -30px;
+  animation-delay: 0s;
+}
+.float-2 {
+  bottom: 40px;
+  left: -20px;
+  animation-delay: -2s;
+}
+.float-val { font-family: 'DM Mono', monospace; font-size: 20px; font-weight: 600; }
+.float-val.green { color: var(--accent); }
+.float-label { font-size: 10px; color: var(--text3); text-transform: uppercase; margin-top: 2px; }
+
+/* ═══ SOCIAL PROOF BAR ═══ */
+.social-proof {
+  background: var(--surface);
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+  padding: 40px 0;
+}
+.proof-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+.proof-item {
+  text-align: center;
+}
+.proof-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.proof-label {
+  font-size: 13px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+/* ═══ FEATURES ═══ */
+.features {
+  padding: 120px 0;
+}
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+.section-title {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.15;
+  margin-bottom: 16px;
+  letter-spacing: -0.5px;
+}
+.section-sub {
+  font-size: 17px;
+  color: var(--text2);
+  max-width: 560px;
+  line-height: 1.7;
+}
+.features-header {
+  text-align: center;
+  margin-bottom: 64px;
+}
+.features-header .section-sub { margin: 0 auto; }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 36px 28px;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transition: transform 0.4s;
+}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+  transform: translateY(-4px);
+}
+.feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 20px;
+  background: var(--accent-light);
+}
+.feature-card:nth-child(2) .feature-icon { background: var(--gold-light); }
+.feature-card:nth-child(3) .feature-icon { background: #e8f4fd; }
+.feature-card:nth-child(4) .feature-icon { background: #fef2f2; }
+.feature-card:nth-child(5) .feature-icon { background: #f3e8ff; }
+.feature-card:nth-child(6) .feature-icon { background: #ecfdf5; }
+.feature-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.feature-desc {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text2);
+}
+
+/* ═══ SCREENSHOTS ═══ */
+.screenshots {
+  padding: 120px 0;
+  background: var(--bg-deep);
+  position: relative;
+  overflow: hidden;
+}
+.screenshots::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(ellipse at 30% 50%, rgba(45,106,79,0.15) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 80%, rgba(200,168,90,0.1) 0%, transparent 50%);
+}
+.screenshots .container { position: relative; z-index: 1; }
+.screenshots .section-label { color: var(--gold); }
+.screenshots .section-title { color: #fff; }
+.screenshots .section-sub { color: var(--text-on-dark); }
+.screenshots-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.screenshots-header .section-sub { margin: 0 auto; }
+
+.screenshots-scroll {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 0 32px 24px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.screenshots-scroll::-webkit-scrollbar { display: none; }
+.screenshot-item {
+  flex: 0 0 340px;
+  scroll-snap-align: center;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+  transition: transform 0.3s;
+}
+.screenshot-item:hover { transform: scale(1.03); }
+.screenshot-body {
+  height: 220px;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  position: relative;
+  overflow: hidden;
+}
+.screenshot-body::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.03) 100%);
+}
+.screenshot-caption {
+  padding: 18px 20px;
+  border-top: 1px solid var(--border-light);
+}
+.screenshot-caption-title { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+.screenshot-caption-desc { font-size: 12px; color: var(--text3); line-height: 1.5; }
+
+/* ═══ PRICING ═══ */
+.pricing {
+  padding: 120px 0;
+  background: var(--surface-warm);
+}
+.pricing-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.pricing-header .section-sub { margin: 0 auto; }
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.price-card {
+  background: var(--surface);
+  border: 2px solid var(--border-light);
+  border-radius: 20px;
+  padding: 40px 32px;
+  text-align: center;
+  position: relative;
+  transition: all 0.3s;
+}
+.price-card:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-lg);
+}
+.price-card.featured {
+  border-color: var(--accent);
+  box-shadow: 0 8px 40px rgba(45,106,79,0.15);
+  transform: scale(1.04);
+}
+.price-card.featured:hover { transform: scale(1.04) translateY(-6px); }
+.price-popular {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 5px 20px;
+  border-radius: 50px;
+  white-space: nowrap;
+}
+.price-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 26px;
+  margin-bottom: 4px;
+}
+.price-desc {
+  font-size: 13px;
+  color: var(--text3);
+  margin-bottom: 20px;
+}
+.price-amount {
+  font-family: 'DM Mono', monospace;
+  font-size: 48px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+.price-amount .currency { font-size: 24px; vertical-align: super; }
+.price-period {
+  font-size: 14px;
+  color: var(--text3);
+  margin-bottom: 28px;
+}
+.price-features {
+  list-style: none;
+  text-align: left;
+  margin-bottom: 32px;
+}
+.price-features li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.price-features li:last-child { border-bottom: none; }
+.price-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.btn-price {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border-radius: 50px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
+  transition: all 0.3s;
+  border: 2px solid var(--accent);
+  font-family: inherit;
+  cursor: pointer;
+}
+.btn-price-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-price-primary:hover { background: var(--accent-dark); }
+.btn-price-ghost {
+  background: transparent;
+  color: var(--accent);
+}
+.btn-price-ghost:hover { background: var(--accent-light); }
+.price-trial {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 12px;
+}
+
+/* ═══ TESTIMONIALS ═══ */
+.testimonials {
+  padding: 120px 0;
+}
+.testimonials-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.testimonials-header .section-sub { margin: 0 auto; }
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.testimonial-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+  position: relative;
+}
+.testimonial-stars {
+  color: var(--gold);
+  font-size: 16px;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+.testimonial-text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text2);
+  margin-bottom: 24px;
+  font-style: italic;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.testimonial-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+}
+.testimonial-name { font-weight: 600; font-size: 14px; }
+.testimonial-role { font-size: 12px; color: var(--text3); }
+
+/* ═══ FAQ ═══ */
+.faq {
+  padding: 120px 0;
+  background: var(--surface-warm);
+}
+.faq-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.faq-header .section-sub { margin: 0 auto; }
+.faq-list {
+  max-width: 740px;
+  margin: 0 auto;
+}
+.faq-item {
+  border-bottom: 1px solid var(--border);
+}
+.faq-question {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 24px 0;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  transition: color 0.2s;
+}
+.faq-question:hover { color: var(--accent); }
+.faq-icon {
+  font-size: 20px;
+  color: var(--text3);
+  transition: transform 0.3s;
+  flex-shrink: 0;
+}
+.faq-item.open .faq-icon { transform: rotate(45deg); color: var(--accent); }
+.faq-answer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, padding 0.4s ease;
+}
+.faq-item.open .faq-answer { max-height: 300px; }
+.faq-answer-inner {
+  padding-bottom: 24px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text2);
+}
+
+/* ═══ CTA ═══ */
+.cta {
+  padding: 120px 0;
+  background: var(--bg-deep);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(200,168,90,0.08) 0%, transparent 60%);
+}
+.cta .container { position: relative; z-index: 1; }
+.cta .section-title { color: #fff; margin-bottom: 16px; }
+.cta-sub {
+  font-size: 17px;
+  color: var(--text-on-dark);
+  margin-bottom: 40px;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.7;
+}
+.cta-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.btn-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 40px;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-cta-primary {
+  background: var(--gold);
+  color: var(--bg-deep);
+}
+.btn-cta-primary:hover { background: #d4b76a; transform: translateY(-2px); }
+.btn-cta-ghost {
+  background: transparent;
+  border: 2px solid rgba(255,255,255,0.2);
+  color: #fff;
+}
+.btn-cta-ghost:hover { border-color: rgba(255,255,255,0.5); }
+
+/* ═══ FOOTER ═══ */
+.footer {
+  padding: 48px 0;
+  background: var(--bg-deep2);
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.footer .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer-logo {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+  color: var(--gold);
+}
+.footer-logo span { color: rgba(255,255,255,0.3); font-style: italic; }
+.footer-copy {
+  font-size: 13px;
+  color: rgba(255,255,255,0.3);
+}
+.footer-links {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+}
+.footer-links a {
+  font-size: 13px;
+  color: rgba(255,255,255,0.4);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.footer-links a:hover { color: var(--gold); }
+
+/* ═══ WHATSAPP BUTTON ═══ */
+.wa-float {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 90;
+  width: 60px;
+  height: 60px;
+  background: #25D366;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(37,211,102,0.4);
+  transition: all 0.3s;
+  text-decoration: none;
+}
+.wa-float:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(37,211,102,0.5); }
+.wa-float svg { width: 30px; height: 30px; fill: #fff; }
+.wa-tooltip {
+  position: absolute;
+  right: 72px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #fff;
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.wa-float:hover .wa-tooltip { opacity: 1; }
+
+/* ═══ RESPONSIVE ═══ */
+@media (max-width: 968px) {
+  .hero .container { grid-template-columns: 1fr; gap: 48px; text-align: center; }
+  .hero-sub { margin: 0 auto 36px; }
+  .hero-actions { justify-content: center; }
+  .hero-visual { max-width: 500px; margin: 0 auto; }
+  .float-1, .float-2 { display: none; }
+  .features-grid { grid-template-columns: 1fr 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+  .price-card.featured { transform: none; }
+  .price-card.featured:hover { transform: translateY(-6px); }
+  .testimonials-grid { grid-template-columns: 1fr; max-width: 500px; margin: 0 auto; }
+  .nav-links { display: none; }
+  .nav-hamburger { display: flex; }
+}
+@media (max-width: 600px) {
+  .container { padding: 0 20px; }
+  .features-grid { grid-template-columns: 1fr; }
+  .proof-row { gap: 32px; }
+  .screenshot-item { flex: 0 0 280px; }
+  .hero { min-height: auto; padding: 120px 0 60px; }
+  .mock-kpi-row { grid-template-columns: 1fr; }
+  .mock-cards { grid-template-columns: 1fr; }
+}
+
+/* Mobile menu */
+.mobile-menu {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(250,247,242,0.98);
+  backdrop-filter: blur(20px);
+  z-index: 99;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+.mobile-menu.open { display: flex; }
+.mobile-menu a {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+.mobile-menu-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--text);
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ NAVBAR ═══ -->
+<nav class="navbar" id="navbar">
+  <div class="container">
+    <a href="#" class="nav-logo">Gestor<span>Renta</span></a>
+    <ul class="nav-links">
+      <li><a href="#funciones">Funciones</a></li>
+      <li><a href="#capturas">La App</a></li>
+      <li><a href="#precios">Precios</a></li>
+      <li><a href="#testimonios">Testimonios</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="nav-cta">Probar gratis →</a></li>
+    </ul>
+    <button class="nav-hamburger" onclick="toggleMobile()" aria-label="Menú">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- Mobile menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <button class="mobile-menu-close" onclick="toggleMobile()">✕</button>
+  <a href="#funciones" onclick="toggleMobile()">Funciones</a>
+  <a href="#capturas" onclick="toggleMobile()">La App</a>
+  <a href="#precios" onclick="toggleMobile()">Precios</a>
+  <a href="#testimonios" onclick="toggleMobile()">Testimonios</a>
+  <a href="#faq" onclick="toggleMobile()">FAQ</a>
+  <a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="nav-cta" style="margin-top:12px" onclick="toggleMobile()">Probar gratis →</a>
+</div>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div class="container">
+    <div class="fade-up">
+      <div class="hero-badge">15 días gratis — sin tarjeta</div>
+      <h1>Administra tus rentas<br>con <em>total control</em></h1>
+      <p class="hero-sub">La plataforma más completa para gestionar propiedades en renta. Controla inquilinos, pagos, contratos y adeudos desde cualquier dispositivo.</p>
+      <div class="hero-actions">
+        <a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="btn-hero btn-hero-primary">Comenzar gratis →</a>
+        <a href="#capturas" class="btn-hero btn-hero-ghost">Ver la app ↓</a>
+      </div>
+      <p class="hero-note">✓ Sin tarjeta de crédito &nbsp; ✓ Configuración en 2 min &nbsp; ✓ <strong>Prueba gratis 15 días</strong></p>
+    </div>
+
+    <div class="hero-visual fade-up delay-2">
+      <div class="float-card float-1">
+        <div class="float-val green">$48,500</div>
+        <div class="float-label">Cobrado este mes</div>
+      </div>
+      <div class="float-card float-2">
+        <div class="float-val" style="color:var(--gold)">96%</div>
+        <div class="float-label">Tasa de ocupación</div>
+      </div>
+      <div class="hero-mockup">
+        <div class="hero-mockup-bar">
+          <div class="hero-mockup-dot"></div>
+          <div class="hero-mockup-dot"></div>
+          <div class="hero-mockup-dot"></div>
+        </div>
+        <div class="hero-mockup-body">
+          <div class="mock-header">
+            <div class="mock-logo">Gestor<span>Renta</span></div>
+            <div class="mock-stats">
+              <div><div class="mock-stat-val green">$48,500</div><div class="mock-stat-label">Cobrado</div></div>
+              <div><div class="mock-stat-val red">$3,200</div><div class="mock-stat-label">Adeudado</div></div>
+            </div>
+          </div>
+          <div class="mock-kpi-row">
+            <div class="mock-kpi"><div class="mock-kpi-val">24</div><div class="mock-kpi-label">Propiedades</div></div>
+            <div class="mock-kpi gold"><div class="mock-kpi-val" style="color:var(--gold)">2</div><div class="mock-kpi-label">Disponibles</div></div>
+            <div class="mock-kpi red"><div class="mock-kpi-val" style="color:var(--danger)">3</div><div class="mock-kpi-label">Vencidas</div></div>
+          </div>
+          <div class="mock-cards">
+            <div class="mock-card"><div class="mock-card-name">Local 4-A Centro</div><div class="mock-card-sub">María González <span class="mock-badge ok">Al día</span></div><div class="mock-card-row"><span class="mock-card-amt green">$8,500</span><span class="mock-card-amt" style="color:var(--text3)">$0</span></div></div>
+            <div class="mock-card warn"><div class="mock-card-name">Depto 201 Norte</div><div class="mock-card-sub">Carlos Ruiz <span class="mock-badge partial">Parcial</span></div><div class="mock-card-row"><span class="mock-card-amt green">$3,000</span><span class="mock-card-amt red">$2,500</span></div></div>
+            <div class="mock-card"><div class="mock-card-name">Nave B Industrial</div><div class="mock-card-sub">Grupo TecnoMex <span class="mock-badge ok">Al día</span></div><div class="mock-card-row"><span class="mock-card-amt green">$22,000</span><span class="mock-card-amt" style="color:var(--text3)">$0</span></div></div>
+            <div class="mock-card alert"><div class="mock-card-name">Casa 15 Residencial</div><div class="mock-card-sub">Roberto Sánchez <span class="mock-badge late">Atrasado</span></div><div class="mock-card-row"><span class="mock-card-amt" style="color:var(--text3)">$0</span><span class="mock-card-amt red">$12,000</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SOCIAL PROOF ═══ -->
+<section class="social-proof">
+  <div class="container">
+    <div class="proof-row fade-up">
+      <div class="proof-item"><div class="proof-val">500+</div><div class="proof-label">Propiedades administradas</div></div>
+      <div class="proof-item"><div class="proof-val">$2.8M</div><div class="proof-label">MXN cobrados al mes</div></div>
+      <div class="proof-item"><div class="proof-val">98%</div><div class="proof-label">Tasa de cobranza</div></div>
+      <div class="proof-item"><div class="proof-val">4.9★</div><div class="proof-label">Calificación usuarios</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURES ═══ -->
+<section class="features" id="funciones">
+  <div class="container">
+    <div class="features-header fade-up">
+      <div class="section-label">Funciones</div>
+      <div class="section-title">Todo lo que necesitas<br>para gestionar tus rentas</div>
+      <p class="section-sub">Desde el control de pagos hasta la generación de contratos. Una sola plataforma para administrar todo tu portafolio de propiedades.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🏢</div>
+        <div class="feature-title">Control de propiedades</div>
+        <div class="feature-desc">Registra todas tus propiedades por tipo: departamentos, locales, naves, casas. Con fotos, documentos y datos clave.</div>
+      </div>
+      <div class="feature-card fade-up delay-1">
+        <div class="feature-icon">💰</div>
+        <div class="feature-title">Cobro de rentas</div>
+        <div class="feature-desc">Registra abonos, lleva el saldo actualizado y detecta automáticamente quién debe, quién va al día y quién tiene saldo a favor.</div>
+      </div>
+      <div class="feature-card fade-up delay-2">
+        <div class="feature-icon">📊</div>
+        <div class="feature-title">Dashboard en tiempo real</div>
+        <div class="feature-desc">Visualiza al instante cuánto has cobrado, cuánto se debe, ocupación por tipo de propiedad y estado de pagos.</div>
+      </div>
+      <div class="feature-card fade-up delay-1">
+        <div class="feature-icon">⚠️</div>
+        <div class="feature-title">Alertas de cobro</div>
+        <div class="feature-desc">El sistema te avisa automáticamente qué inquilinos tienen pagos vencidos o parciales. Nunca pierdas de vista un adeudo.</div>
+      </div>
+      <div class="feature-card fade-up delay-2">
+        <div class="feature-icon">📝</div>
+        <div class="feature-title">Contratos y documentos</div>
+        <div class="feature-desc">Genera contratos de arrendamiento, actas de entrega, fichas técnicas y compártelos por WhatsApp o PDF.</div>
+      </div>
+      <div class="feature-card fade-up delay-3">
+        <div class="feature-icon">☁️</div>
+        <div class="feature-title">Sincronización en la nube</div>
+        <div class="feature-desc">Tus datos se sincronizan en tiempo real. Accede desde tu celular, tablet o computadora. Siempre actualizados.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SCREENSHOTS ═══ -->
+<section class="screenshots" id="capturas">
+  <div class="container">
+    <div class="screenshots-header fade-up">
+      <div class="section-label">La App</div>
+      <div class="section-title">Diseñada para ser simple y poderosa</div>
+      <p class="section-sub">Una interfaz limpia y profesional que te permite gestionar todo sin complicaciones.</p>
+    </div>
+  </div>
+  <div class="screenshots-scroll fade-up delay-1">
+    <div class="screenshot-item">
+      <div class="screenshot-body" style="background:linear-gradient(135deg,#e8f5e9,#f5f0e8)">🏠</div>
+      <div class="screenshot-caption">
+        <div class="screenshot-caption-title">Dashboard principal</div>
+        <div class="screenshot-caption-desc">Vista general de tu portafolio con KPIs, ocupación y estado de pagos.</div>
+      </div>
+    </div>
+    <div class="screenshot-item">
+      <div class="screenshot-body" style="background:linear-gradient(135deg,#f5f0e8,#ede7da)">🏢</div>
+      <div class="screenshot-caption">
+        <div class="screenshot-caption-title">Propiedades por tipo</div>
+        <div class="screenshot-caption-desc">Organiza tus propiedades en categorías con filtros y búsqueda rápida.</div>
+      </div>
+    </div>
+    <div class="screenshot-item">
+      <div class="screenshot-body" style="background:linear-gradient(135deg,#e8f4fd,#e8f5e9)">💰</div>
+      <div class="screenshot-caption">
+        <div class="screenshot-caption-title">Registro de pagos</div>
+        <div class="screenshot-caption-desc">Registra abonos con forma de pago, mes correspondiente y comprobante.</div>
+      </div>
+    </div>
+    <div class="screenshot-item">
+      <div class="screenshot-body" style="background:linear-gradient(135deg,#fef2f2,#fef9ec)">⚠️</div>
+      <div class="screenshot-caption">
+        <div class="screenshot-caption-title">Alertas de cobro</div>
+        <div class="screenshot-caption-desc">Identifica al instante quién tiene pagos vencidos y cuánto adeuda.</div>
+      </div>
+    </div>
+    <div class="screenshot-item">
+      <div class="screenshot-body" style="background:linear-gradient(135deg,#f3e8ff,#e8f4fd)">📝</div>
+      <div class="screenshot-caption">
+        <div class="screenshot-caption-title">Generador de contratos</div>
+        <div class="screenshot-caption-desc">Crea contratos personalizados listos para firmar e imprimir.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ PRICING ═══ -->
+<section class="pricing" id="precios">
+  <div class="container">
+    <div class="pricing-header fade-up">
+      <div class="section-label">Precios</div>
+      <div class="section-title">Planes para cada necesidad</div>
+      <p class="section-sub">Desde el arrendador individual hasta la inmobiliaria profesional. Todos incluyen 15 días de prueba gratis.</p>
+    </div>
+    <div class="pricing-grid">
+      <!-- Básico -->
+      <div class="price-card fade-up">
+        <div class="price-name">Básico</div>
+        <div class="price-desc">Ideal para arrendadores individuales</div>
+        <div class="price-amount"><span class="currency">$</span>199</div>
+        <div class="price-period">MXN / mes</div>
+        <ul class="price-features">
+          <li><span class="price-check">✓</span> Hasta 10 propiedades</li>
+          <li><span class="price-check">✓</span> 1 usuario</li>
+          <li><span class="price-check">✓</span> Dashboard y alertas</li>
+          <li><span class="price-check">✓</span> Registro de pagos</li>
+          <li><span class="price-check">✓</span> Generador de contratos</li>
+          <li><span class="price-check">✓</span> Sincronización en la nube</li>
+        </ul>
+        <a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="btn-price btn-price-ghost">Comenzar gratis</a>
+        <div class="price-trial">15 días gratis · sin tarjeta</div>
+      </div>
+      <!-- Pro -->
+      <div class="price-card featured fade-up delay-1">
+        <div class="price-popular">✨ Más popular</div>
+        <div class="price-name">Pro</div>
+        <div class="price-desc">Para portafolios en crecimiento</div>
+        <div class="price-amount"><span class="currency">$</span>499</div>
+        <div class="price-period">MXN / mes</div>
+        <ul class="price-features">
+          <li><span class="price-check">✓</span> Hasta 50 propiedades</li>
+          <li><span class="price-check">✓</span> 3 usuarios</li>
+          <li><span class="price-check">✓</span> Todo lo del plan Básico</li>
+          <li><span class="price-check">✓</span> Reportes avanzados</li>
+          <li><span class="price-check">✓</span> Compartir por WhatsApp</li>
+          <li><span class="price-check">✓</span> Soporte prioritario</li>
+        </ul>
+        <a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="btn-price btn-price-primary">Comenzar gratis</a>
+        <div class="price-trial">15 días gratis · sin tarjeta</div>
+      </div>
+      <!-- Enterprise -->
+      <div class="price-card fade-up delay-2">
+        <div class="price-name">Enterprise</div>
+        <div class="price-desc">Para inmobiliarias profesionales</div>
+        <div class="price-amount"><span class="currency">$</span>899</div>
+        <div class="price-period">MXN / mes</div>
+        <ul class="price-features">
+          <li><span class="price-check">✓</span> Propiedades ilimitadas</li>
+          <li><span class="price-check">✓</span> Usuarios ilimitados</li>
+          <li><span class="price-check">✓</span> Todo lo del plan Pro</li>
+          <li><span class="price-check">✓</span> Permisos por usuario</li>
+          <li><span class="price-check">✓</span> Almacenamiento ampliado</li>
+          <li><span class="price-check">✓</span> Soporte dedicado</li>
+        </ul>
+        <a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="btn-price btn-price-ghost">Comenzar gratis</a>
+        <div class="price-trial">15 días gratis · sin tarjeta</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TESTIMONIALS ═══ -->
+<section class="testimonials" id="testimonios">
+  <div class="container">
+    <div class="testimonials-header fade-up">
+      <div class="section-label">Testimonios</div>
+      <div class="section-title">Lo que dicen nuestros clientes</div>
+      <p class="section-sub">Arrendadores de todo México ya confían en GestorRenta para administrar sus propiedades.</p>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card fade-up">
+        <div class="testimonial-stars">★★★★★</div>
+        <div class="testimonial-text">"Antes llevaba todo en un Excel y siempre se me pasaba cobrarle a alguien. Con GestorRenta tengo todo bajo control y las alertas no me dejan olvidar ningún pago."</div>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">RL</div>
+          <div><div class="testimonial-name">Roberto López</div><div class="testimonial-role">12 departamentos · Monterrey</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-up delay-1">
+        <div class="testimonial-stars">★★★★★</div>
+        <div class="testimonial-text">"Lo que más me gusta es que puedo ver desde mi celular quién ya pagó y quién no. Es súper práctico y mis inquilinos también lo notan — todo más profesional."</div>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" style="background:var(--gold)">AM</div>
+          <div><div class="testimonial-name">Ana María Durán</div><div class="testimonial-role">8 locales comerciales · Guadalajara</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-up delay-2">
+        <div class="testimonial-stars">★★★★★</div>
+        <div class="testimonial-text">"Administramos más de 40 propiedades y el dashboard nos da la visión completa al instante. Los contratos automáticos nos ahorraron horas de trabajo."</div>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" style="background:#1d6fa4">JC</div>
+          <div><div class="testimonial-name">Jorge Castillo</div><div class="testimonial-role">Inmobiliaria Castillo · Chihuahua</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FAQ ═══ -->
+<section class="faq" id="faq">
+  <div class="container">
+    <div class="faq-header fade-up">
+      <div class="section-label">Preguntas Frecuentes</div>
+      <div class="section-title">¿Tienes dudas?</div>
+      <p class="section-sub">Aquí respondemos las preguntas más comunes sobre GestorRenta.</p>
+    </div>
+    <div class="faq-list fade-up">
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Necesito instalar algo? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">No. GestorRenta funciona directo desde tu navegador, sin instalar nada. También puedes instalarlo como app en tu celular desde el navegador para acceso rápido.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Mis datos están seguros? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">Sí. Usamos Firebase de Google para almacenar tus datos de forma segura y encriptada. Cada cuenta tiene su propio espacio aislado y solo tú puedes ver tu información.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Puedo cambiar de plan después? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">Sí, puedes cambiar de plan en cualquier momento desde la sección de Configuración. El cambio se aplica de inmediato y el cobro se ajusta proporcionalmente.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Qué pasa cuando termina mi prueba gratis? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">Al terminar los 15 días de prueba, eliges el plan que prefieras. Tus datos se mantienen intactos. Si no activas un plan, tu cuenta se pausa hasta que decidas continuar.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Puedo tener varios usuarios? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">Sí. El plan Pro permite hasta 3 usuarios y el Enterprise usuarios ilimitados. Cada usuario puede tener permisos diferentes — por ejemplo, uno que solo registre pagos y otro que vea todo el dashboard.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Funciona en México? ¿Los precios son en pesos? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">Sí, GestorRenta está diseñado específicamente para el mercado mexicano. Todos los precios están en pesos mexicanos (MXN) y el sistema maneja formatos de fecha, moneda y teléfono de México.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">¿Puedo cancelar en cualquier momento? <span class="faq-icon">+</span></button>
+        <div class="faq-answer"><div class="faq-answer-inner">Sí, puedes cancelar tu suscripción cuando quieras sin penalizaciones. Seguirás teniendo acceso hasta el final de tu período pagado.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CTA ═══ -->
+<section class="cta">
+  <div class="container fade-up">
+    <div class="section-label" style="color:var(--gold)">Empieza hoy</div>
+    <div class="section-title">Toma el control de tus rentas</div>
+    <div class="cta-sub">Únete a cientos de arrendadores que ya administran sus propiedades de forma profesional con GestorRenta.</div>
+    <div class="cta-actions">
+      <a href="https://francob85-creator.github.io/Gestor-Rentas/GESTOR_DE_RENTAS.html" class="btn-cta btn-cta-primary">Comenzar gratis — 15 días →</a>
+      <a href="https://wa.me/528711786102?text=Hola,%20me%20interesa%20GestorRenta" target="_blank" class="btn-cta btn-cta-ghost">Hablar por WhatsApp</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-logo">Gestor<span>Renta</span></div>
+    <ul class="footer-links">
+      <li><a href="#funciones">Funciones</a></li>
+      <li><a href="#precios">Precios</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="https://wa.me/528711786102" target="_blank">Contacto</a></li>
+    </ul>
+    <div class="footer-copy">© 2026 GestorRenta. Todos los derechos reservados.</div>
+  </div>
+</footer>
+
+<!-- ═══ WHATSAPP FLOAT ═══ -->
+<a href="https://wa.me/528711786102?text=Hola,%20me%20interesa%20GestorRenta" target="_blank" class="wa-float" aria-label="WhatsApp">
+  <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  <span class="wa-tooltip">¿Dudas? Escríbenos</span>
+</a>
+
+<script>
+// Navbar scroll effect
+window.addEventListener('scroll', () => {
+  document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 50);
+});
+
+// Scroll reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+// FAQ toggle
+function toggleFaq(btn) {
+  const item = btn.parentElement;
+  const wasOpen = item.classList.contains('open');
+  document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+  if (!wasOpen) item.classList.add('open');
+}
+
+// Mobile menu
+function toggleMobile() {
+  document.getElementById('mobileMenu').classList.toggle('open');
+}
+</script>
+
+</body>
+</html>
