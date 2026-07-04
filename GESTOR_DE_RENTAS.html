@@ -1737,6 +1737,7 @@
         <span style="font-size:13px;color:var(--text3)">¿No tienes cuenta?</span>
         <button class="login-link" style="display:inline;margin-left:6px;font-weight:600" data-action="showRegisterPanel">Regístrate gratis</button>
       </div>
+      <div id="app-version-login" style="margin-top:10px;text-align:center;font-size:11px;color:var(--text3);opacity:.65"></div>
     </div>
 
     <!-- ── PANEL: Registro nuevo cliente ── -->
@@ -1857,6 +1858,7 @@
         </div>
         <hr class="user-dropdown-sep" id="dd-sep" style="display:none">
         <div class="user-dropdown-item danger" data-action="doLogout">🚪 Cerrar sesión</div>
+        <div id="app-version-dd" style="padding:6px 14px 8px;font-size:10px;color:var(--text3);opacity:.65;text-align:center"></div>
       </div>
     </div>
   </div>
@@ -3842,6 +3844,22 @@ function _loadDocx(callback) {
 </script>
 
 <script>
+
+// ============================================================
+// VERSIÓN DE LA APP — ⚠️ SUBIR ESTE NÚMERO EN CADA DESPLIEGUE ⚠️
+// Debe coincidir con el ?v=N que se usa al desplegar en GitHub Pages.
+// Se muestra en la pantalla de login y en el menú de usuario (avatar),
+// para verificar de un vistazo qué versión corre cada dispositivo y
+// detectar de inmediato una PWA con código viejo cacheado.
+// ============================================================
+var APP_VERSION = 'v52 · 04-jul-2026';
+try {
+  console.log('[App] GestorRenta ' + APP_VERSION);
+  var _verLoginEl = document.getElementById('app-version-login');
+  if (_verLoginEl) _verLoginEl.textContent = APP_VERSION;
+  var _verDdEl = document.getElementById('app-version-dd');
+  if (_verDdEl) _verDdEl.textContent = APP_VERSION;
+} catch(eVer) {}
 
 // ============================================================
 // FIREBASE CONFIG & SYNC
