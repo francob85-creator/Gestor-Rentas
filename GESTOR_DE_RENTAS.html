@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v86 · 13-ago-2026';
+var APP_VERSION = 'v87 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -6491,12 +6491,43 @@ function _startSyncPoll() {
       if (_cloudTs > _fbLastCloudTs + 1000) {
         var _fromOtherDevice = _d._sessionId && _d._sessionId !== _fbSessionId;
         _applyServerData(_d, _cloudTs);
-        if (_d.abonosMigratedV2 && !_fbUnsubscribeAbonos) {
+        // FIX POLL-SUBCOL (2026-08): antes esta recuperación (a) sólo traía abonos y (b) sólo si
+        // _fbUnsubscribeAbonos era null. Las dos cosas dejaban huecos:
+        //   (a) una propiedad o un cliente dados de alta en otro dispositivo no tenían NINGUNA
+        //       red de seguridad — si su listener no entregaba, no aparecían hasta recargar.
+        //   (b) un listener ZOMBI (el canal ya no entrega, pero la variable sigue apuntando a su
+        //       unsubscribe) no es null, así que la condición fallaba justo cuando más se
+        //       necesitaba. Caso real: abono registrado desde otro dispositivo que no aparecía en
+        //       escritorio ni esperando; en iOS PWA sí, porque ahí el transporte es long-polling
+        //       y no se queda zombi. Peor aún, _applyServerData refresca _fbLastCloudTs, así que
+        //       en el siguiente tick los datos ya parecían "frescos" y el poll ni corría.
+        // Ahora: si llegamos aquí es que el doc raíz YA cambió (updatedAt nuevo) — o sea, alguien
+        // guardó algo en otro dispositivo. Se recuperan las tres subcolecciones migradas, sin
+        // preguntar por el estado del listener. Se lee siempre la colección COMPLETA desde
+        // servidor porque _apply*Snapshot elimina de memoria lo que no venga en el snapshot;
+        // un snapshot parcial aquí borraría datos buenos.
+        if (_d.abonosMigratedV2) {
           var _aCol = tenantAbonosCol();
           if (_aCol) {
             _aCol.get({ source: 'server' }).then(function(aSnap) {
               if (aSnap && !_fbSyncing) _applyAbonosSnapshot(aSnap);
             }).catch(function(e) { console.warn('[Sync] Poll abonos fetch error:', e.message); });
+          }
+        }
+        if (_d.rentasMigratedV2 || state._rentasMigratedV2) {
+          var _rColPoll = tenantRentasCol();
+          if (_rColPoll) {
+            _rColPoll.get({ source: 'server' }).then(function(rSnap) {
+              if (rSnap && !_fbSyncing) _applyRentasSnapshot(rSnap);
+            }).catch(function(e) { console.warn('[Sync] Poll rentas fetch error:', e.message); });
+          }
+        }
+        if (_d.clientesMigratedV2 || state._clientesMigratedV2) {
+          var _cColPoll = tenantClientesCol();
+          if (_cColPoll) {
+            _cColPoll.get({ source: 'server' }).then(function(cSnap) {
+              if (cSnap && !_fbSyncing) _applyClientesSnapshot(cSnap);
+            }).catch(function(e) { console.warn('[Sync] Poll clientes fetch error:', e.message); });
           }
         }
         if (_fromOtherDevice) showToast('🔄 Datos actualizados desde otro dispositivo');
