@@ -3861,7 +3861,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v79 · 12-ago-2026';
+var APP_VERSION = 'v80 · 12-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -8540,6 +8540,33 @@ function _finishLogin(user) {
   }, 2000);
 }
 
+// FIX AFTERLOGIN-FOSIL (2026-08): saveUsers([titular]) hacia fbSaveUsers -> docRef.set({list:[titular]}),
+// un OVERWRITE TOTAL de la lista del servidor. Se llegaba ahi cuando fbLoadUsers() devolvia null, cosa
+// que ocurre tanto para un tenant realmente nuevo como para un get() que FALLO (red caida / WebChannel
+// zombi en iOS PWA) con localStorage vacio. En el 2do caso se borraban TODOS los subusuarios en todos
+// los dispositivos — el mismo patron que FP-UNION / TP-UNION. Corolario de CLAUDE.md: nunca escribir
+// una lista completa a partir de una lectura que pudo fallar. Cura: antes de sembrar el titular se
+// RELEE el doc directamente; solo se persiste si el get() confirma que la lista no existe o esta vacia.
+// Si la relectura falla, o el servidor ya tiene usuarios, NO se sobrescribe: el titular queda solo en
+// memoria y el login continua. Asi una memoria vieja ya no destruye nada.
+async function _persistTitularSoloSiServidorVacio(titular) {
+  var docRef = tenantUsersDoc();
+  if (!docRef) return; // sin auth: no persistimos, el titular vive solo en memoria
+  var snap;
+  try {
+    snap = await docRef.get();
+  } catch(e) {
+    console.warn('[Auth] No se persiste titular: la lectura de usuarios fallo (' + (e && e.message) + '). Se evita sobrescribir la lista del servidor.');
+    return; // lectura fallo: NO escribir defaults encima
+  }
+  var listaServidor = (snap && snap.exists) ? snap.data().list : null;
+  if (listaServidor && listaServidor.length > 0) {
+    console.warn('[Auth] No se persiste titular: el servidor ya tiene ' + listaServidor.length + ' usuario(s); se preservan.');
+    return; // el servidor SI tiene usuarios (carrera / lectura previa fallida): no sobrescribir
+  }
+  saveUsers([titular]); // confirmado vacio: es seguro sembrar el titular
+}
+
 async function _afterFirebaseLogin() {
   // Clear any stale state from localStorage before loading this user's data
   state.rentas = [];
@@ -8566,7 +8593,9 @@ async function _afterFirebaseLogin() {
       perms: ['prop_read','prop_write','cli_read','cli_write','abono_write','abono_delete','factura_write','dash_read','alertas_read','alertas_write','vacant_read','config_read'],
       createdAt: new Date().toISOString(),
     };
-    saveUsers([user]);
+    // FIX AFTERLOGIN-FOSIL: antes era saveUsers([user]) a ciegas. Ahora solo persiste si una
+    // relectura confirma que el servidor no tiene usuarios; si el get fallo, no sobrescribe.
+    await _persistTitularSoloSiServidorVacio(user);
   }
   currentUser = user;
 
