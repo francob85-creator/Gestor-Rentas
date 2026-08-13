@@ -215,9 +215,21 @@ ni des el trabajo por terminado por tu cuenta.
 > **Problema** · **Causa raíz** · **Qué voy a modificar** · **Qué NO voy a modificar** ·
 > **Riesgos** · **Cómo lo voy a validar**
 
-- **`git commit`:** libre, todas las veces que quieras. Es el punto de restauración.
-- **`git push`: NUNCA sin que Franco lo pida.** `push` a `main` publica a producción
-  inmediatamente, y ahí están sus clientes.
+- **`git commit`:** siempre, al terminar cada cambio. Es el punto de restauración.
+- **`git push`: automático después de cada cambio validado.** Franco lo autorizó así para
+  trabajar rápido. PERO `push` a `main` **publica a producción de inmediato**, con sus clientes
+  en vivo, así que el push exige tres condiciones sin excepción:
+  1. `node validate.js` dijo **TODOS LOS BLOQUES VALIDOS**. Si no, NO se publica.
+  2. `git diff --stat` muestra un cambio del tamaño esperado. Si salieron más archivos o
+     muchas más líneas de las previstas, **DETENTE Y PREGUNTA** en vez de publicar.
+  3. El cambio no es de los riesgosos de la lista de arriba. Los riesgosos siguen
+     necesitando PLAN DE CAMBIO aprobado ANTES de tocar y ANTES de publicar.
+- **Después de cada push**, cierra con este bloque, que es lo que Franco necesita para probar:
+
+> 🚀 **PUBLICADO — vNN**
+> Pruébalo en Safari con `?v=NN` → borra el ícono → vuelve a agregar la PWA.
+> **Qué probar:** [pasos concretos]
+> **Si algo sale mal:** `git revert HEAD` y `git push` regresa a la versión anterior.
 
 ## Zona prohibida
 

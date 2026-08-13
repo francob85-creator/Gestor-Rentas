@@ -3861,7 +3861,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v80 · 12-ago-2026';
+var APP_VERSION = 'v81 · 12-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -6820,6 +6820,38 @@ function fbStartSync() {
       if (window._detectorHuerfanasRan) return; // V2: una sola auditoría por sesión
       window._detectorHuerfanasRan = true;
       if (!currentUser || !state.facturasEmitidas || !state.facturasEmitidas.length) return;
+      // FIX HUERFANAS-ACK (2026-08): Franco revisó el respaldo 2026-08-12 y reconoció como
+      // HISTÓRICAS estas 19 facturas huérfanas. Diagnóstico: el puntero abonoId apunta a un id
+      // de abono que nunca se guardó con ese id (el pago real quedó bajo otro id, o se borró),
+      // secuela de las ráfagas de timbrado que iOS mató a media operación. Se marcan como
+      // reconocidas SOLO para dejar de alertarlas: NO se re-liga ningún puntero ni se toca ningún
+      // CFDI/abono. Cualquier huérfana NUEVA distinta a estas seguirá avisando. Lista explícita
+      // = auditable (se ve exactamente cuáles se callaron, no puede callar de más).
+      var _HUERFANAS_HISTORICAS_OK = [
+        '89a7e041-1ad5-459f-a422-1d3487852a96', // Bodega Tajito 2 · 2026-04
+        'e3a5d665-2403-43c0-b92d-6bebb03448fa', // LISBOA DEPA C · 2026-03
+        '63ad3260-fbc1-400b-a179-2ab7962ddf87', // Bodega Tajito 1 · 2026-04
+        'a79e3bca-0bb5-41c9-ada6-5334b27e4333', // Bodega Tajito 2 · 2026-03
+        'dd75b652-4ddd-4570-bc24-243a903f315d', // La Rivereña 978-BIS · 2026-04
+        '24c351f5-0883-4a53-9e6b-7a3714320f46', // PREDIO MAGDALENAS c/Paco · 2026-03
+        'ba020fd3-10e7-450d-99ec-17b314e94a64', // BODEGA EL RANCHITO · 2026-03
+        '50fe4c8c-7a44-448f-835a-f0af170ead98', // BODEGA EL RANCHITO · 2026-03
+        'a30d706c-df7e-46e7-b70d-4ad5df6d17b2', // BODEGA EL RANCHITO · 2026-04
+        '1199663e-a269-4f12-8cc9-8cfdfabfb0df', // Bodega Tajito 2 · 2026-02
+        '429dac08-b588-403e-820a-5916a205a7a1', // Bodega Tajito 2 · 2026-03
+        '3a834264-3d6a-48a1-9e3c-0093bd139f27', // La Rivereña 978-BIS · 2026-03
+        '89be0696-08a6-4d9a-b7fa-1fb0cf1cda80', // Centenario bodega 1 · 2026-03
+        '656aec88-068e-435c-b3fa-86c177c669bb', // Bodega Tajito 2 · 2026-04
+        'aadcf378-6beb-4aa4-bdf1-9013117c60a8', // La Rivereña 978-BIS · 2026-04
+        'f11f5f11-09ac-4fa0-b40e-4851698ea4d7', // Bodega Sarabia · 2026-04
+        '4c6e6db9-0457-41eb-aa20-4eaffbabd7b6', // Bodega Tajito 2 · 2026-05
+        'f10b5d70-01ce-47d5-b885-97ad9ae28fd2', // BODEGA EL RANCHITO · 2026-08
+        '381c07ac-6510-4746-8b3d-59688e5a5887'  // BODEGA EL RANCHITO · 2026-08
+      ];
+      if (!state._facturasHuerfanasOk) state._facturasHuerfanasOk = [];
+      _HUERFANAS_HISTORICAS_OK.forEach(function(_u){
+        if (state._facturasHuerfanasOk.indexOf(_u) < 0) state._facturasHuerfanasOk.push(_u);
+      });
       var _huerfanas = [];
       var _rm = {};
       state.rentas.forEach(function(r){ _rm[r.id] = r; });

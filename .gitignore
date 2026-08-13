@@ -1,0 +1,4 @@
+# Respaldos con datos de clientes y SECRETOS FISCALES (CSD .cer/.key, contraseñas,
+# apiKey de FiscalAPI, passHash de usuarios). NUNCA deben subirse al repo.
+GestorRenta_respaldo_*.json
+*_respaldo_*.json
