@@ -44,8 +44,18 @@
 
 <title>GestorRenta</title>
 <!-- v2.9.0 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- LIBS-LOCALES (2026-08): jsPDF y EmailJS se servían desde cdnjs y jsdelivr sin atributo
+     integrity. Un script de CDN corre con permisos totales dentro de la página: puede leer la
+     sesión de Firebase, la apiKey de FiscalAPI y los datos de los inquilinos. Si el CDN sirviera
+     algo distinto, nos enteraríamos cuando ya hubiera pasado. Además el tag de EmailJS usaba
+     "@4" (versión flotante), así que la librería podía cambiar sola de un día para otro.
+     Ahora se sirven desde el propio dominio: mismas versiones exactas que ya se cargaban
+     (jsPDF 2.5.1, EmailJS 4.4.1 = lo que "@4" resolvía), tomadas del paquete oficial de npm.
+     Esto es más fuerte que integrity/SRI: SRI solo detecta el cambio y rompe la app; hospedarlas
+     lo evita, y de paso quita la dependencia de que cdnjs y jsdelivr sigan en pie.
+     Para actualizarlas: bajar el dist del paquete npm y reemplazar el archivo. -->
+<script src="jspdf.umd.min.js"></script>
+<script src="emailjs.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <style>
@@ -3861,7 +3871,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v84 · 13-ago-2026';
+var APP_VERSION = 'v85 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
