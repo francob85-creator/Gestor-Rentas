@@ -3861,7 +3861,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v81 · 12-ago-2026';
+var APP_VERSION = 'v82 · 12-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -6578,7 +6578,20 @@ function _applyMainDocSnapshot(data, isExternalUpdate) {
   } else {
     var _mainClientes = data.clientes || [];
     if (_mainClientes.length > 0) {
-      state.clientes = _mainClientes;
+      // FIX FOSIL-MAINDOC (2026-08): espejo del guard de rentas (arriba). En V2 la subcolección es
+      // la ÚNICA fuente de verdad de QUÉ clientes existen. El arreglo embebido del doc principal
+      // puede estar FÓSIL (p.ej. si las escrituras del doc principal fallan por tamaño) y traer
+      // clientes ya eliminados — asignarlo completo los resucitaba. El doc principal puede
+      // actualizar campos de clientes EXISTENTES, pero jamás introducir ids que la memoria
+      // (poblada por la subcolección) no conoce. Altas legítimas viajan por el listener de la
+      // subcolección, no por aquí.
+      var _memIdsCli = {};
+      state.clientes.forEach(function(cM) { _memIdsCli[cM.id] = true; });
+      var _mainCliFiltrados = _mainClientes.filter(function(cF) { return _memIdsCli[cF.id]; });
+      if (_mainCliFiltrados.length < _mainClientes.length) {
+        console.warn('[Sync] Doc principal traía ' + (_mainClientes.length - _mainCliFiltrados.length) + ' cliente(s) que no existen en la subcolección — ignorados (arreglo fósil).');
+      }
+      state.clientes = _mainCliFiltrados;
     } else if (state.clientes.length === 0) {
       var _recCliCol = tenantClientesCol();
       if (_recCliCol) {
