@@ -496,6 +496,18 @@
   }
   .alert-action-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
   .alert-action-btn.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+  /* COBRANZA-WA (2026-08): botón de WhatsApp y línea de último contacto en los renglones de alerta.
+     .wa arranca en verde; una vez enviado pasa a gris para que resalten los que faltan. */
+  .alert-action-btn.wa { background: #25d366; border-color: #25d366; color: #fff; font-weight: 600; }
+  .alert-action-btn.wa:hover { background: #1da851; border-color: #1da851; }
+  .alert-action-btn.wa.enviado { background: var(--surface2); border-color: var(--border); color: var(--text2); font-weight: 500; }
+  .alert-action-btn.wa.enviado:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .alert-ultimo-wa {
+    width: 100%; padding-left: 22px; margin-top: 6px;
+    font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px;
+  }
+  .alert-ultimo-wa b { color: var(--text2); font-weight: 600; }
+  .alert-ultimo-wa.viejo { color: #92400e; }
   .alert-nota-preview {
     margin-top: 6px; font-size: 11px; color: #92400e; background: #fef3c7;
     padding: 4px 8px; border-radius: 5px; line-height: 1.4; display: flex; align-items: flex-start; gap: 4px;
@@ -775,6 +787,9 @@
     .alert-name { font-size: 14px; }
     .alert-amount { font-size: 15px !important; }
     .alert-actions { padding-left: 0 !important; }
+    /* COBRANZA-WA: la línea de último contacto pierde la sangría igual que los botones,
+       si no queda corrida 22px a la derecha respecto a ellos en pantalla angosta. */
+    .alert-ultimo-wa { padding-left: 0 !important; }
     .alert-fecha-badge { margin-top: 3px; display: inline-flex; }
 
     /* Import modal */
@@ -3871,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v85 · 13-ago-2026';
+var APP_VERSION = 'v86 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14506,6 +14521,53 @@ function getMesLabel(mesStr) {
   return meses[parseInt(m)-1] + ' ' + y;
 }
 
+// COBRANZA-WA (2026-08): "hace 2 días" a partir de una fecha ISO. No existía helper de tiempo
+// relativo en el proyecto. Devuelve '' si la fecha es basura, para no pintar texto roto.
+function _haceCuanto(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  var difMs = Date.now() - d.getTime();
+  if (difMs < 0) return 'recién';              // reloj del otro dispositivo adelantado
+  var horas = Math.floor(difMs / 3600000);
+  if (horas < 1) return 'hace un momento';
+  if (horas < 24) return 'hace ' + horas + (horas === 1 ? ' hora' : ' horas');
+  var dias = Math.floor(horas / 24);
+  if (dias === 1) return 'ayer';
+  if (dias < 30) return 'hace ' + dias + ' días';
+  var meses = Math.floor(dias / 30);
+  return 'hace ' + meses + (meses === 1 ? ' mes' : ' meses');
+}
+
+// COBRANZA-WA (2026-08): botón de WhatsApp + línea de último contacto para un renglón de alerta.
+// Antes había que entrar propiedad por propiedad para mandar el recordatorio, y no quedaba
+// rastro de quién ya lo había mandado: con tres personas en tres dispositivos, al inquilino le
+// llegaban tres mensajes o ninguno. renta.ultimoWa guarda SOLO el último envío ({ts, por}) —
+// deliberadamente no es un historial, para no crear otra lista que crezca y necesite tope.
+// Devuelve strings vacíos si el cliente no tiene teléfono (sin teléfono no hay a dónde escribir).
+function _alertaWaBloque(renta) {
+  var vacio = { btn: '', linea: '' };
+  if (!renta || !renta.clienteId) return vacio;
+  var cli = _getCliMap()[renta.clienteId];
+  if (!cli || !cli.tel) return vacio;
+  var uw = renta.ultimoWa;
+  var cuando = (uw && uw.ts) ? _haceCuanto(uw.ts) : '';
+  var enviado = !!cuando;
+  var btn = '<button class="alert-action-btn wa' + (enviado ? ' enviado' : '') + '"'
+    + ' data-action="enviarRecordatorioPago" data-arg="' + renta.id + '" data-stop="1">💬 WhatsApp</button>';
+  var linea;
+  if (!enviado) {
+    linea = '<div class="alert-ultimo-wa">— Sin mensajes enviados</div>';
+  } else {
+    // Más de una semana sin escribirle a alguien que sigue debiendo: se marca en ámbar.
+    var diasDesde = Math.floor((Date.now() - new Date(uw.ts).getTime()) / 86400000);
+    var viejo = diasDesde >= 7;
+    linea = '<div class="alert-ultimo-wa' + (viejo ? ' viejo' : '') + '">'
+      + (viejo ? '⚠️' : '✅') + ' Último mensaje: <b>' + escHtml(uw.por || 'alguien') + '</b> · ' + cuando + '</div>';
+  }
+  return { btn: btn, linea: linea };
+}
+
 function renderAlertas() {
   var _visibles = getRentasVisibles();
   var el = document.getElementById('alertas-list');
@@ -14649,6 +14711,7 @@ function renderAlertas() {
       var meses = st.mesesDebidos || 0;
       var mesesBadge = meses >= 1 ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin-top:4px">' + meses + (meses===1?' mes':' meses') + ' sin pagar</span>' : '';
       var rid = renta.id;
+      var _wa = _alertaWaBloque(renta); // COBRANZA-WA
       html += '<div class="alert-item danger"><div class="alert-dot danger"></div>'
         + '<div class="alert-info" data-action="verDetalle" data-arg="' + rid + '" style="cursor:pointer">'
         + '<div class="alert-name">' + escHtml(renta.nombre) + '</div>'
@@ -14657,9 +14720,10 @@ function renderAlertas() {
         + '<div style="text-align:right;flex-shrink:0"><div class="alert-amount danger">' + fmt(st.saldoVencido) + '</div>'
         + '<div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div></div>'
         + '<div class="alert-actions" style="width:100%;padding-left:22px">'
+        + _wa.btn
         + (_canWriteAlertas ? '<button class="alert-action-btn ' + (seg&&seg.nota?'active':'') + '" data-action="alertaAgregarNota" data-arg="' + rid + '" data-stop="1">Nota</button>'
         + '<button class="alert-action-btn" data-action="alertaReagendar" data-arg="' + rid + '" data-stop="1">Reagendar</button>' : '')
-        + '</div></div>';
+        + '</div>' + _wa.linea + '</div>';
     });
   }
 
@@ -14675,6 +14739,7 @@ function renderAlertas() {
       var meses = st.mesesDebidos || 0;
       var mesesBadge = meses >= 1 ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin-top:4px">' + meses + (meses===1?' mes':' meses') + ' sin pagar</span>' : '';
       var rid = renta.id;
+      var _wa = _alertaWaBloque(renta); // COBRANZA-WA
       html += '<div class="alert-item danger"><div class="alert-dot warning"></div>'
         + '<div class="alert-info" data-action="verDetalle" data-arg="' + rid + '" style="cursor:pointer">'
         + '<div class="alert-name">' + escHtml(renta.nombre) + '</div>'
@@ -14683,9 +14748,10 @@ function renderAlertas() {
         + '<div style="text-align:right;flex-shrink:0"><div class="alert-amount danger">' + fmt(st.saldoVencido) + '</div>'
         + '<div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div></div>'
         + '<div class="alert-actions" style="width:100%;padding-left:22px">'
+        + _wa.btn
         + (_canWriteAlertas ? '<button class="alert-action-btn ' + (seg&&seg.nota?'active':'') + '" data-action="alertaAgregarNota" data-arg="' + rid + '" data-stop="1">Nota</button>'
         + '<button class="alert-action-btn" data-action="alertaReagendar" data-arg="' + rid + '" data-stop="1">Reagendar</button>' : '')
-        + '</div></div>';
+        + '</div>' + _wa.linea + '</div>';
     });
   }
 
@@ -14704,6 +14770,7 @@ function renderAlertas() {
       var meses = st.mesesDebidos || 0;
       var mesesBadge = meses >= 1 ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin-top:4px">' + meses + (meses===1?' mes':' meses') + ' sin pagar</span>' : '';
       var rid = renta.id;
+      var _wa = _alertaWaBloque(renta); // COBRANZA-WA
       html += '<div class="alert-item seguimiento"><div class="alert-dot seguimiento"></div>'
         + '<div class="alert-info" data-action="verDetalle" data-arg="' + rid + '" style="cursor:pointer">'
         + '<div class="alert-name">' + escHtml(renta.nombre) + ' <span class="alert-fecha-badge">' + fechaLabel + ' — ' + diasLabel + '</span></div>'
@@ -14712,10 +14779,11 @@ function renderAlertas() {
         + '<div style="text-align:right;flex-shrink:0"><div class="alert-amount warning">' + fmt(st.saldo) + '</div>'
         + '<div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div></div>'
         + '<div class="alert-actions" style="width:100%;padding-left:22px">'
+        + _wa.btn
         + (_canWriteAlertas ? '<button class="alert-action-btn active" data-action="alertaAgregarNota" data-arg="' + rid + '" data-stop="1">Nota</button>'
         + '<button class="alert-action-btn active" data-action="alertaReagendar" data-arg="' + rid + '" data-stop="1">Cambiar fecha</button>'
         + '<button class="alert-action-btn" data-action="alertaQuitarSeguimiento" data-arg="' + rid + '" data-stop="1" style="color:var(--danger);border-color:var(--danger-light)">Quitar seguimiento</button>' : '')
-        + '</div></div>';
+        + '</div>' + _wa.linea + '</div>';
     });
   }
 
@@ -22280,6 +22348,24 @@ async function enviarRecordatorioPago(rentaId) {
         + `📆 Fecha límite: día ${diaVenc} del mes%0A%0A`
         + `¡Gracias por tu puntualidad!`;
     }
+  }
+  // COBRANZA-WA (2026-08): dejar constancia de quién mandó el mensaje y cuándo. Franco, su
+  // familiar y su asociado trabajan en dispositivos distintos y nadie sabía si alguien más ya
+  // había escrito: al inquilino le llegaban tres recordatorios o ninguno. Se guarda SOLO el
+  // último envío, no un historial, para no crear otra lista que crezca y acabe necesitando tope.
+  // Vive en la renta (no en alertaSeguimiento) porque las rentas van en subcolección — un doc
+  // por propiedad — mientras que la fusión de alertaSeguimiento es superficial por rentaId y lo
+  // local pisa lo de la nube, así que el registro del otro dispositivo se perdería.
+  // Se registra antes de abrir WhatsApp: en iOS el window.open puede mandar la app al fondo.
+  if (hasPerm('alertas_write')) {
+    renta.ultimoWa = {
+      ts: new Date().toISOString(),
+      por: (currentUser && (currentUser.nombre || currentUser.username)) || 'alguien'
+    };
+    save();
+    if (state._rentasMigratedV2) _fbWriteRenta(renta);
+    // Repintar solo si estás viendo Alertas — desde el detalle de una propiedad no hace falta.
+    if (currentPage === 'alertas' && typeof renderAlertas === 'function') renderAlertas();
   }
   window.open(`https://wa.me/${telFull}?text=${msg}`, '_blank');
   } catch(e) { showAlert('Error al enviar recordatorio:\n' + (e.message||String(e)), 'error'); }
