@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — WhatsApp en Alertas</title>
+<style>
+  :root {
+    --surface: #ffffff; --surface2: #f0f0f4; --border: #e2e2e8;
+    --accent: #2d6a4f; --danger: #c0392b; --danger-light: #fdf0ee;
+    --warning: #b7791f; --warning-light: #fef9ec;
+    --text: #2c2c2c; --text2: #5c5c66; --text3: #9292a0;
+    --wa: #25d366;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f7f7fa; color: var(--text); margin: 0; padding: 16px 12px 60px;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .intro { font-size: 13px; color: var(--text2); margin: 0 0 22px; line-height: 1.5; max-width: 760px; }
+
+  .variante { margin-bottom: 34px; }
+  .variante > h2 {
+    font-size: 15px; margin: 0 0 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .tag {
+    font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
+    background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 20px;
+  }
+  .variante > p { font-size: 12.5px; color: var(--text2); margin: 0 0 12px; line-height: 1.5; }
+
+  /* ── CSS copiado de la app (para que se vea idéntico) ── */
+  .alert-item {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px; margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .alert-item.danger { border-left: 4px solid var(--danger); background: var(--danger-light); }
+  .alert-item.warning { border-left: 4px solid var(--warning); background: var(--warning-light); }
+  .alert-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .alert-dot.danger { background: var(--danger); }
+  .alert-dot.warning { background: var(--warning); }
+  .alert-info { flex: 1; min-width: 0; }
+  .alert-name { font-weight: 500; }
+  .alert-detail { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .alert-amount { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .alert-amount.danger { color: var(--danger); }
+  .alert-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; width: 100%; padding-left: 22px; }
+  .alert-action-btn {
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .alert-action-btn.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+  .mesesBadge {
+    display: inline-flex; align-items: center; gap: 4px; background: #fee2e2; color: #991b1b;
+    font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; margin-top: 4px;
+  }
+  .sec-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .sec-bar { width: 3px; height: 18px; border-radius: 2px; }
+  .sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+
+  /* ── Lo NUEVO de cada variante ── */
+  .btn-wa {
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px; font-weight: 600;
+    background: var(--wa); color: #fff; border: 1px solid var(--wa);
+  }
+  .btn-wa.enviado {
+    background: var(--surface2); color: var(--text2); border-color: var(--border); font-weight: 500;
+  }
+  .ultimo-contacto {
+    font-size: 11px; color: var(--text3); margin-top: 6px;
+    display: flex; align-items: center; gap: 5px; padding-left: 22px; width: 100%;
+  }
+  .ultimo-contacto b { color: var(--text2); font-weight: 600; }
+  .chip-contacto {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600;
+    padding: 2px 8px; border-radius: 10px; background: #e8f5ec; color: #1b5e3f;
+  }
+  .chip-contacto.viejo { background: #fef3c7; color: #92400e; }
+  .chip-contacto.nunca { background: #fee2e2; color: #991b1b; }
+
+  .nota { font-size: 12px; color: var(--text2); background: #fff; border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin-top: 10px; line-height: 1.5; }
+  .divisor { height: 1px; background: var(--border); margin: 26px 0; }
+  .caso { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase;
+    letter-spacing: .5px; margin: 14px 0 6px; }
+</style>
+</head>
+<body>
+
+<h1>Botón de WhatsApp en la pantalla de Alertas</h1>
+<p class="intro">
+  Tres formas de meter el cobro por WhatsApp en los renglones que ya tienes, sin pantalla nueva.
+  Los renglones de arriba son los mismos que ves hoy — lo único que cambia es lo marcado en cada variante.
+  Ábrelo en el celular para ver cómo queda en pantalla angosta.
+</p>
+
+<!-- ══════════════ VARIANTE A ══════════════ -->
+<div class="variante">
+  <h2><span class="tag">Opción A</span> Solo el botón</h2>
+  <p>Un botón verde más en la fila que ya existe. Lo mínimo posible: nada nuevo que guardar, nada que sincronizar.</p>
+
+  <div class="sec-title"><div class="sec-bar" style="background:var(--danger)"></div>
+    <span class="sec-label" style="color:var(--danger)">Deuda crítica · +2 meses</span></div>
+
+  <div class="alert-item danger">
+    <div class="alert-dot danger"></div>
+    <div class="alert-info">
+      <div class="alert-name">Bodega Tajito</div>
+      <div class="alert-detail">Juan Ramírez · Debía pagar <strong>Junio 2026</strong> hasta el día 8</div>
+      <div class="mesesBadge">2 meses de adeudo</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$24,800</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa">💬 WhatsApp</button>
+      <button class="alert-action-btn">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+  </div>
+
+  <div class="alert-item danger">
+    <div class="alert-dot danger"></div>
+    <div class="alert-info">
+      <div class="alert-name">Predio Magdalenas</div>
+      <div class="alert-detail">Comercializadora del Norte · Debía pagar <strong>Julio 2026</strong> hasta el día 5</div>
+      <div class="mesesBadge">2 meses de adeudo</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$41,200</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa">💬 WhatsApp</button>
+      <button class="alert-action-btn active">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+  </div>
+
+  <div class="nota">
+    <b>A favor:</b> es el cambio más chico y el de menor riesgo — no guarda datos nuevos.<br>
+    <b>En contra:</b> no resuelve el problema de que ustedes tres no saben a quién ya le escribieron.
+  </div>
+</div>
+
+<div class="divisor"></div>
+
+<!-- ══════════════ VARIANTE B ══════════════ -->
+<div class="variante">
+  <h2><span class="tag">Opción B</span> Botón + último contacto</h2>
+  <p>Igual que A, pero abajo aparece una línea discreta con <b>quién</b> mandó el último mensaje y <b>cuándo</b>. Es la que resuelve los mensajes duplicados entre tú, tu familiar y tu asociado.</p>
+
+  <div class="sec-title"><div class="sec-bar" style="background:var(--danger)"></div>
+    <span class="sec-label" style="color:var(--danger)">Deuda crítica · +2 meses</span></div>
+
+  <div class="caso">Caso: ya le escribieron hace poco</div>
+  <div class="alert-item danger">
+    <div class="alert-dot danger"></div>
+    <div class="alert-info">
+      <div class="alert-name">Bodega Tajito</div>
+      <div class="alert-detail">Juan Ramírez · Debía pagar <strong>Junio 2026</strong> hasta el día 8</div>
+      <div class="mesesBadge">2 meses de adeudo</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$24,800</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa enviado">💬 WhatsApp</button>
+      <button class="alert-action-btn">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+    <div class="ultimo-contacto">✅ Último mensaje: <b>Franco</b> · hace 2 días</div>
+  </div>
+
+  <div class="caso">Caso: hace mucho que nadie le escribe</div>
+  <div class="alert-item danger">
+    <div class="alert-dot danger"></div>
+    <div class="alert-info">
+      <div class="alert-name">Predio Magdalenas</div>
+      <div class="alert-detail">Comercializadora del Norte · Debía pagar <strong>Julio 2026</strong> hasta el día 5</div>
+      <div class="mesesBadge">2 meses de adeudo</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$41,200</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa">💬 WhatsApp</button>
+      <button class="alert-action-btn active">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+    <div class="ultimo-contacto">⚠️ Último mensaje: <b>Beto</b> · hace 21 días</div>
+  </div>
+
+  <div class="caso">Caso: nunca se le ha escrito</div>
+  <div class="alert-item warning">
+    <div class="alert-dot warning"></div>
+    <div class="alert-info">
+      <div class="alert-name">La Rivereña</div>
+      <div class="alert-detail">Ana Sofía Cruz · Debía pagar <strong>Agosto 2026</strong> hasta el día 10</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$8,400</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa">💬 WhatsApp</button>
+      <button class="alert-action-btn">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+    <div class="ultimo-contacto">— Sin mensajes enviados</div>
+  </div>
+
+  <div class="nota">
+    <b>A favor:</b> de un vistazo sabes a quién le falta que le escriban y quién ya lo hizo. Se acaban los mensajes repetidos.<br>
+    <b>En contra:</b> hay que guardar y sincronizar un dato nuevo por propiedad. Es más código y más cuidado.
+  </div>
+</div>
+
+<div class="divisor"></div>
+
+<!-- ══════════════ VARIANTE C ══════════════ -->
+<div class="variante">
+  <h2><span class="tag">Opción C</span> Todo en una etiqueta</h2>
+  <p>La misma información que B, pero comprimida en una etiqueta de color a un lado del nombre, sin renglón extra. Ocupa menos alto — caben más propiedades en la pantalla del celular.</p>
+
+  <div class="sec-title"><div class="sec-bar" style="background:var(--danger)"></div>
+    <span class="sec-label" style="color:var(--danger)">Deuda crítica · +2 meses</span></div>
+
+  <div class="alert-item danger">
+    <div class="alert-dot danger"></div>
+    <div class="alert-info">
+      <div class="alert-name">Bodega Tajito <span class="chip-contacto">💬 Franco · 2d</span></div>
+      <div class="alert-detail">Juan Ramírez · Debía pagar <strong>Junio 2026</strong> hasta el día 8</div>
+      <div class="mesesBadge">2 meses de adeudo</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$24,800</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa enviado">💬 WhatsApp</button>
+      <button class="alert-action-btn">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+  </div>
+
+  <div class="alert-item danger">
+    <div class="alert-dot danger"></div>
+    <div class="alert-info">
+      <div class="alert-name">Predio Magdalenas <span class="chip-contacto viejo">💬 Beto · 21d</span></div>
+      <div class="alert-detail">Comercializadora del Norte · Debía pagar <strong>Julio 2026</strong> hasta el día 5</div>
+      <div class="mesesBadge">2 meses de adeudo</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$41,200</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa">💬 WhatsApp</button>
+      <button class="alert-action-btn active">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+  </div>
+
+  <div class="alert-item warning">
+    <div class="alert-dot warning"></div>
+    <div class="alert-info">
+      <div class="alert-name">La Rivereña <span class="chip-contacto nunca">💬 nunca</span></div>
+      <div class="alert-detail">Ana Sofía Cruz · Debía pagar <strong>Agosto 2026</strong> hasta el día 10</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="alert-amount danger">$8,400</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">pendiente</div>
+    </div>
+    <div class="alert-actions">
+      <button class="btn-wa">💬 WhatsApp</button>
+      <button class="alert-action-btn">Nota</button>
+      <button class="alert-action-btn">Reagendar</button>
+    </div>
+  </div>
+
+  <div class="nota">
+    <b>A favor:</b> la misma información que B pero sin renglón extra. Ves más propiedades sin bajarle.<br>
+    <b>En contra:</b> el nombre de la propiedad se puede encimar con la etiqueta si es largo. En pantalla angosta se parte en dos líneas.
+  </div>
+</div>
+
+<div class="divisor"></div>
+
+<div class="nota" style="border-left-color:var(--danger)">
+  <b>Lo que ninguna opción hace:</b> mandar el mensaje solo. WhatsApp por <code>wa.me</code> siempre
+  necesita que alguien abra la app y le dé enviar — eso no lo puedo cambiar sin un servidor.
+  Lo que sí hacen las tres es que ya no tengas que entrar propiedad por propiedad.
+</div>
+
+</body>
+</html>
