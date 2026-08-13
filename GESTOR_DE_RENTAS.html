@@ -3861,7 +3861,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v83 · 13-ago-2026';
+var APP_VERSION = 'v84 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -6211,7 +6211,8 @@ function _applyServerData(data, cloudTs) {
         var _phKeys = new Set(data.timbresHistorial.map(function(h){ return (h.fecha||'')+(h.tipo||'')+(h.cantidad||''); }));
         var _phLocal = (state.timbresHistorial||[]).filter(function(h){ return !_phKeys.has((h.fecha||'')+(h.tipo||'')+(h.cantidad||'')); });
         state.timbresHistorial = data.timbresHistorial.concat(_phLocal);
-        if (state.timbresHistorial.length > 200) state.timbresHistorial = state.timbresHistorial.slice(-200);
+        // FIX TIMBRES-TOPE (2026-08): ver MAX_TIMBRES_HIST.
+        if (state.timbresHistorial.length > MAX_TIMBRES_HIST) state.timbresHistorial = state.timbresHistorial.slice(-MAX_TIMBRES_HIST);
       }
     }
     // MERGE facturasEmitidas in poll path — always treat as external (different device triggered poll)
@@ -6710,7 +6711,8 @@ function _applyMainDocSnapshot(data, isExternalUpdate) {
 
       var _localTHOnly = (state.timbresHistorial||[]).filter(function(h){ return !_cloudTH.has(h.fecha + '|' + h.tipo + '|' + h.cantidad); });
       state.timbresHistorial = data.timbresHistorial.concat(_localTHOnly);
-      if (state.timbresHistorial.length > 200) state.timbresHistorial = state.timbresHistorial.slice(-200);
+      // FIX TIMBRES-TOPE (2026-08): ver MAX_TIMBRES_HIST.
+      if (state.timbresHistorial.length > MAX_TIMBRES_HIST) state.timbresHistorial = state.timbresHistorial.slice(-MAX_TIMBRES_HIST);
     }
   }
 
@@ -7925,7 +7927,8 @@ async function pullFromCloud() {
 
         var _localTHOnly = (state.timbresHistorial||[]).filter(function(h){ return !_cloudTH.has(h.fecha + '|' + h.tipo + '|' + h.cantidad); });
         state.timbresHistorial = data.timbresHistorial.concat(_localTHOnly);
-        if (state.timbresHistorial.length > 200) state.timbresHistorial = state.timbresHistorial.slice(-200);
+        // FIX TIMBRES-TOPE (2026-08): ver MAX_TIMBRES_HIST.
+        if (state.timbresHistorial.length > MAX_TIMBRES_HIST) state.timbresHistorial = state.timbresHistorial.slice(-MAX_TIMBRES_HIST);
       }
     }
     if (data.facturasEmitidas) state.facturasEmitidas = data.facturasEmitidas;
@@ -9501,6 +9504,18 @@ var DEFAULT_TIPOS_GASTO = [
 var DEFAULT_TIPOS_PROP = [
   'Departamento', 'Casa', 'Local comercial', 'Bodega', 'Oficina', 'Otro'
 ];
+
+// FIX TIMBRES-TOPE (2026-08): el historial de timbres se recortaba a las 200 entradas más
+// recientes al fusionar snapshots, y ese recorte viajaba de vuelta al servidor en el siguiente
+// guardado — o sea, las entradas viejas se perdían para siempre, sin aviso. descontarTimbre()
+// agrega una entrada por CADA factura emitida, así que 200 se llena en poco más de un año.
+// El tope NO se puede quitar: timbresHistorial vive dentro del doc principal, y Firestore
+// tiene un límite duro de 1 MB por documento — sin tope, un día fbSave() falla y deja de
+// guardarse TODO, no solo el historial. 500 entradas × ~200 bytes ≈ 100 KB, que sí cabe.
+// La cura definitiva es sacar el historial a subcolección (como abonos/rentas/clientes);
+// mientras tanto esto compra ~3 años. Se usa constante y no el número suelto para que los
+// tres sitios de recorte no puedan volver a desincronizarse entre sí.
+var MAX_TIMBRES_HIST = 500;
 
 // ── Plan definitions ──────────────────────────────────────────
 function getPlanLimites(plan) {
