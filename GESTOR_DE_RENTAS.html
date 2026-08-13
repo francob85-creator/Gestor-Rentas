@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v87 · 13-ago-2026';
+var APP_VERSION = 'v88 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4445,10 +4445,40 @@ function _reviveAbonosListener() {
 // 10s se omiten. Las llamadas críticas (arranque / reinicio de listeners vía
 // _forzarFrescoSubcols) pasan force=true y NUNCA se omiten — la red de seguridad intacta.
 var _lastSubcolsRefreshTs = 0;
-function _refreshSubcolsFromServer(force) {
+// FIX REFRESH-DESCARTADO (2026-08): estas tres descargas se DESCARTABAN en silencio si
+// _fbSyncing estaba activo al momento de resolver la promesa — se pagaba la lectura y se tiraba
+// el dato. Y como _lastSubcolsRefreshTs ya se había marcado arriba, el throttle bloqueaba el
+// reintento otros 10s. Caso real: al abrir la app en escritorio, el refresh del arranque cayó
+// mientras el doc raíz se estaba aplicando, se tiró, y el refresh del regreso-a-foreground se
+// omitió por throttle. El dato nuevo tardaba 45-50s en aparecer (vía el poll de 15s) en vez de
+// 1-2s. Ahora, si una descarga se descarta por estar ocupados, se libera el throttle para que
+// el siguiente intento SÍ corra en vez de quedar bloqueado.
+// Tope de liberaciones seguidas: _fbSyncing se libera en un finally en _applyServerData, pero en
+// el camino del listener principal se pone en false sin finally — si algo ahí lanzara, quedaría
+// pegado en true y liberar el throttle cada vez convertiría esto en descargas repetidas cada 15s,
+// facturadas. Tras 3 intentos sin lograr aplicar, se deja de liberar y se espera al camino normal.
+// El contador se reinicia en cuanto un refresh sí se aplica.
+var _subcolsDescartadosSeguidos = 0;
+function _liberarThrottleSubcols(_cual) {
+  _subcolsDescartadosSeguidos++;
+  if (_subcolsDescartadosSeguidos > 3) {
+    console.warn('[Sync] Refresh de ' + _cual + ' descartado ' + _subcolsDescartadosSeguidos + ' veces seguidas — no se libera el throttle (¿_fbSyncing atorado?)');
+    return;
+  }
+  _lastSubcolsRefreshTs = 0;
+  console.log('[Sync] Refresh de ' + _cual + ' descartado (sync en curso) — throttle liberado para reintentar');
+}
+function _refreshSubcolsFromServer(force, gapMs) {
   if (!_fbReady || !currentUser || !_fbAuth) return;
-  if (!force && (Date.now() - _lastSubcolsRefreshTs) < 10000) {
-    console.log('[Sync] Refresh de subcolecciones omitido (corrió hace <10s)');
+  // FIX REFRESH-FOREGROUND (2026-08): el gap ahora es configurable. El de 10s existe para que el
+  // regreso a foreground —que dispara DOS handlers de visibilitychange— no descargue las tres
+  // subcolecciones dos veces y pague lecturas duplicadas. Pero ese mismo gap bloqueaba el refresh
+  // legítimo justo cuando el usuario vuelve a la app esperando ver datos nuevos. Los llamadores
+  // de foreground pasan un gap corto (2s): sigue matando el disparo duplicado, que ocurre en el
+  // mismo instante, sin bloquear la actualización que el usuario está esperando.
+  var _gap = (typeof gapMs === 'number') ? gapMs : 10000;
+  if (!force && (Date.now() - _lastSubcolsRefreshTs) < _gap) {
+    console.log('[Sync] Refresh de subcolecciones omitido (corrió hace <' + Math.round(_gap/1000) + 's)');
     return;
   }
   _lastSubcolsRefreshTs = Date.now();
@@ -4457,7 +4487,10 @@ function _refreshSubcolsFromServer(force) {
     var _aCol = tenantAbonosCol();
     if (_aCol) {
       _aCol.get({ source: 'server' }).then(function(aSnap) {
-        if (aSnap && !_fbSyncing) _applyAbonosSnapshot(aSnap);
+        if (!aSnap) return;
+        if (_fbSyncing) { _liberarThrottleSubcols('abonos'); return; }
+        _subcolsDescartadosSeguidos = 0; // se logró aplicar: la racha se reinicia
+        _applyAbonosSnapshot(aSnap);
       }).catch(function(e) { console.warn('[Sync] Foreground abonos refresh error:', e.message); });
     }
   }
@@ -4466,7 +4499,9 @@ function _refreshSubcolsFromServer(force) {
     var _rCol = tenantRentasCol();
     if (_rCol) {
       _rCol.get({ source: 'server' }).then(function(rSnap) {
-        if (rSnap && !_fbSyncing) _applyRentasSnapshot(rSnap);
+        if (!rSnap) return;
+        if (_fbSyncing) { _liberarThrottleSubcols('rentas'); return; }
+        _applyRentasSnapshot(rSnap);
       }).catch(function(e) { console.warn('[Sync] Foreground rentas refresh error:', e.message); });
     }
   }
@@ -4475,7 +4510,9 @@ function _refreshSubcolsFromServer(force) {
     var _cCol = tenantClientesCol();
     if (_cCol) {
       _cCol.get({ source: 'server' }).then(function(cSnap) {
-        if (cSnap && !_fbSyncing) _applyClientesSnapshot(cSnap);
+        if (!cSnap) return;
+        if (_fbSyncing) { _liberarThrottleSubcols('clientes'); return; }
+        _applyClientesSnapshot(cSnap);
       }).catch(function(e) { console.warn('[Sync] Foreground clientes refresh error:', e.message); });
     }
   }
@@ -6503,33 +6540,13 @@ function _startSyncPoll() {
         //       en el siguiente tick los datos ya parecían "frescos" y el poll ni corría.
         // Ahora: si llegamos aquí es que el doc raíz YA cambió (updatedAt nuevo) — o sea, alguien
         // guardó algo en otro dispositivo. Se recuperan las tres subcolecciones migradas, sin
-        // preguntar por el estado del listener. Se lee siempre la colección COMPLETA desde
-        // servidor porque _apply*Snapshot elimina de memoria lo que no venga en el snapshot;
-        // un snapshot parcial aquí borraría datos buenos.
-        if (_d.abonosMigratedV2) {
-          var _aCol = tenantAbonosCol();
-          if (_aCol) {
-            _aCol.get({ source: 'server' }).then(function(aSnap) {
-              if (aSnap && !_fbSyncing) _applyAbonosSnapshot(aSnap);
-            }).catch(function(e) { console.warn('[Sync] Poll abonos fetch error:', e.message); });
-          }
-        }
-        if (_d.rentasMigratedV2 || state._rentasMigratedV2) {
-          var _rColPoll = tenantRentasCol();
-          if (_rColPoll) {
-            _rColPoll.get({ source: 'server' }).then(function(rSnap) {
-              if (rSnap && !_fbSyncing) _applyRentasSnapshot(rSnap);
-            }).catch(function(e) { console.warn('[Sync] Poll rentas fetch error:', e.message); });
-          }
-        }
-        if (_d.clientesMigratedV2 || state._clientesMigratedV2) {
-          var _cColPoll = tenantClientesCol();
-          if (_cColPoll) {
-            _cColPoll.get({ source: 'server' }).then(function(cSnap) {
-              if (cSnap && !_fbSyncing) _applyClientesSnapshot(cSnap);
-            }).catch(function(e) { console.warn('[Sync] Poll clientes fetch error:', e.message); });
-          }
-        }
+        // preguntar por el estado del listener.
+        // Se delega en _refreshSubcolsFromServer en vez de repetir aquí las tres descargas: esa
+        // función ya lee las colecciones COMPLETAS desde servidor (obligatorio, porque
+        // _apply*Snapshot elimina de memoria lo que no venga en el snapshot) y ya trae el throttle
+        // que evita pagar cientos de lecturas duplicadas cuando varios caminos piden refresco a la
+        // vez. Duplicarlo aquí sí traía los datos, pero saltándose ese throttle.
+        _refreshSubcolsFromServer();
         if (_fromOtherDevice) showToast('🔄 Datos actualizados desde otro dispositivo');
         if (_d.abonosMigratedV2 && !_fbUnsubscribeAbonos) _reviveAbonosListener();
       }
@@ -7241,7 +7258,11 @@ function fbStartSync() {
         // sin condicionar al cambio del doc principal. Un abono nuevo vive en la subcolección y
         // el updatedAt del doc principal puede no reflejarlo a tiempo; antes eso causaba la
         // espera de 30s–1min hasta el poll. Ahora aparece en 1–2s.
-        _refreshSubcolsFromServer();
+        // FIX REFRESH-FOREGROUND (2026-08): gap corto (2s) en vez del de 10s por defecto. El
+        // throttle largo bloqueaba justo este refresh —el que el usuario está esperando al volver
+        // a la app— cuando el arranque ya había corrido uno. 2s siguen matando el disparo
+        // duplicado de los dos handlers de visibilitychange, que ocurre en el mismo instante.
+        _refreshSubcolsFromServer(false, 2000);
       }
     }
   });
@@ -26476,7 +26497,8 @@ async function initApp() {
       // FIX FOREGROUND-SUBCOL: refrescar también las subcolecciones V2 (abonos/rentas/clientes)
       // de inmediato. Este handler antes solo refrescaba el doc principal, dejando los abonos
       // nuevos sin aparecer hasta el poll de 15s / revival de 60s.
-      _refreshSubcolsFromServer();
+      // FIX REFRESH-FOREGROUND (2026-08): gap corto (2s) — ver la nota del otro handler.
+      _refreshSubcolsFromServer(false, 2000);
     }
   });
   // En desktop: solo reiniciar si el listener está muerto
