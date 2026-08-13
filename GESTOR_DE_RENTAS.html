@@ -3861,7 +3861,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v82 · 12-ago-2026';
+var APP_VERSION = 'v83 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -5866,7 +5866,19 @@ async function fbSave() {
     // SIEMPRE escribir al doc principal — garantiza que todos los dispositivos
     // puedan leer datos incluso sin reglas Firestore para subcollecciones
     var _payload = _sanitizeForFirestore(_syncPayload(_stripForSync(), ''));
-    await docRef.set(_payload);
+    // FIX MAINDOC-MERGE (2026-08): antes era docRef.set(_payload) a secas, que en Firestore
+    // significa "el documento ES exactamente esto" — TODO campo del doc raíz que _syncPayload
+    // no enumerara se borraba del servidor en cada autosave, sin error y sin aviso. Ya nos
+    // mordió con las flags de migración (ver FIX MIGRATION-FLAGS en _syncPayload), y la cura
+    // de entonces fue añadir esos campos a mano: la trampa seguía armada para el siguiente.
+    // NO se usa { merge:true }: Firestore fusiona los mapas clave por clave, así que una clave
+    // ausente sobreviviría en la nube — alertaQuitarSeguimiento() borra state.alertaSeguimiento
+    // [rentaId] y el lector fusiona nube+local, así que la alerta borrada RESUCITARÍA.
+    // mergeFields es la semántica exacta: cada campo listado se reemplaza entero (los borrados
+    // dentro de mapas siguen funcionando igual que antes) y lo NO listado se preserva.
+    // La lista sale de Object.keys(_payload) y no escrita a mano, para que no pueda volver a
+    // desincronizarse de _syncPayload cuando alguien agregue un campo nuevo.
+    await docRef.set(_payload, { mergeFields: Object.keys(_payload) });
 
     // FASE 2: subcollection writes are done individually by each write function
     // (_fbWriteRenta/_fbWriteCliente) — no batch write needed here.
@@ -7749,7 +7761,10 @@ async function forceSyncToCloud() {
     var docRef = tenantDoc();
     if (!docRef) throw new Error('No hay sesión activa');
     // Siempre escribir al doc principal (garantiza acceso desde todos los dispositivos)
-    await docRef.set(_syncPayload(_stripForSync(), ' [FORCE]'));
+    // FIX MAINDOC-MERGE (2026-08): mergeFields para no borrar campos ajenos al payload. Ver
+    // la explicación larga en fbSave().
+    var _payloadForce = _syncPayload(_stripForSync(), ' [FORCE]');
+    await docRef.set(_payloadForce, { mergeFields: Object.keys(_payloadForce) });
     // Fase 2: también escribir subcollecciones si están habilitadas
     if (state._rentasMigratedV2 && state._clientesMigratedV2) {
       var _frCol = tenantRentasCol();
@@ -24016,7 +24031,9 @@ async function importarDatos(input) {
         var docRef = tenantDoc();
         if (docRef) {
           var _payload = _sanitizeForFirestore(_syncPayload(_stripForSync(), ''));
-          await docRef.set(_payload);
+          // FIX MAINDOC-MERGE (2026-08): mergeFields para no borrar campos ajenos al payload.
+          // Ver la explicación larga en fbSave().
+          await docRef.set(_payload, { mergeFields: Object.keys(_payload) });
           console.log('[Importar] Doc principal escrito');
         }
       } catch(eMain) {
