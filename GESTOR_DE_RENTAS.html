@@ -3861,7 +3861,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v78 · 12-ago-2026';
+var APP_VERSION = 'v79 · 12-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -9294,7 +9294,9 @@ async function guardarUsuario() {
 
   // Check subEmail uniqueness (also against usernames of other users)
   if (subEmail) {
-    var emailDup = users.find(function(u){ return u.id !== editandoUsuarioId && u.subEmail && u.subEmail.toLowerCase() === subEmailVal.toLowerCase(); });
+    // FIX SUBEMAILVAL (2026-08): se leia subEmailVal (variable inexistente) -> ReferenceError
+    // al guardar un 2do usuario con correo, rompia guardarUsuario entero. La buena es subEmail.
+    var emailDup = users.find(function(u){ return u.id !== editandoUsuarioId && u.subEmail && u.subEmail.toLowerCase() === subEmail.toLowerCase(); });
     if (emailDup) return showAlert('Ese correo ya está asignado a otro usuario.', 'info');
   }
 
