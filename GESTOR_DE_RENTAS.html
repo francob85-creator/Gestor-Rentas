@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v90 · 13-ago-2026';
+var APP_VERSION = 'v91 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4055,12 +4055,33 @@ try {
   else if (location.search.indexOf('lp=0') >= 0) { localStorage.removeItem('gr_lp'); }
   _lpManual = (localStorage.getItem('gr_lp') === '1');
 } catch(eLPm) {}
+// FIX LP-NUNCA-ACTIVO (2026-08): esta cura llevaba desde su creación SIN APLICARSE. El SDK
+// rechazaba el settings() con "experimentalForceLongPolling and experimentalAutoDetectLongPolling
+// cannot be used together" — desde firebase-js-sdk 9.x el auto-detect viene activo por defecto, y
+// pedir el force sin apagarlo explícitamente es un conflicto. El error caía en el catch, se
+// registraba como un aviso más y nadie lo notaba: el iPhone seguía en WebChannel, justo el
+// transporte que esta cura existe para evitar. La bitácora del iPhone de Franco lo mostraba en
+// CADA arranque (v82, v83, v85, v87, v90), acompañado de "WebChannelConnection RPC 'Listen'
+// stream transport errored" una y otra vez, y de los retrasos de 45s a 5min al recibir cambios
+// de otro dispositivo — exactamente el sintoma que describe el comentario de arriba.
+// Ahora se apaga el auto-detect explícitamente. El reintento sin esa clave cubre versiones del
+// SDK que no la acepten, para no quedarnos peor que antes.
 if (_esIOSStandalonePWA || _lpManual) {
+  var _lpOk = false;
   try {
-    db.settings({ experimentalForceLongPolling: true, merge: true });
-    console.log('[Sync] Transporte long-polling activado (' + (_lpManual ? 'interruptor manual lp=1' : 'iOS standalone') + ')');
+    db.settings({ experimentalForceLongPolling: true, experimentalAutoDetectLongPolling: false, merge: true });
+    _lpOk = true;
   } catch(eLP) {
-    console.warn('[Sync] No se pudo activar long-polling:', eLP.message);
+    console.warn('[Sync] Long-polling: settings con autoDetect:false falló (' + eLP.message + ') — reintentando sin esa clave');
+    try {
+      db.settings({ experimentalForceLongPolling: true, merge: true });
+      _lpOk = true;
+    } catch(eLP2) {
+      console.warn('[Sync] No se pudo activar long-polling:', eLP2.message);
+    }
+  }
+  if (_lpOk) {
+    console.log('[Sync] Transporte long-polling ACTIVADO (' + (_lpManual ? 'interruptor manual lp=1' : 'iOS standalone') + ')');
   }
 }
 const auth = firebase.auth();
