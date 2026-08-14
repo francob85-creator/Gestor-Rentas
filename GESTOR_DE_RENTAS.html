@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v89 · 13-ago-2026';
+var APP_VERSION = 'v90 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -7201,6 +7201,21 @@ function fbStartSync() {
     if (_pendingClientesSnapshot && state._clientesMigratedV2) {
       var _pendingC = _pendingClientesSnapshot; _pendingClientesSnapshot = null;
       try { _applyClientesSnapshot(_pendingC, true); } catch(e) { console.warn('[Clientes] Pending snapshot error:', e.message); }
+    }
+
+    // FIX EXTERNO-SUBCOL (2026-08): si este snapshot trae un cambio hecho en OTRO dispositivo,
+    // ir a buscar las subcolecciones. Hasta aquí sólo se volcaban los snapshots que YA
+    // tuviéramos en la mano (los tres bloques de arriba); si el listener de abonos estaba mudo
+    // no había nada que volcar y el abono nuevo nunca llegaba. Y como este mismo bloque acaba de
+    // refrescar _fbLastCloudTs, el poll de 15s veía los datos "frescos" y se salía sin revisar:
+    // el dispositivo sabía que algo había cambiado allá afuera, pero nunca iba por ello. Ese era
+    // el caso de un abono agregado en la computadora que tardaba minutos en verse en el celular
+    // teniendo la app abierta, sin visibilitychange que disparara el rescate.
+    // Va después de _fbSyncing = false a propósito: si no, el propio refresh se descartaría por
+    // encontrarnos "ocupados". El throttle corto evita que un guardado ajeno con varios snapshots
+    // seguidos dispare varias descargas.
+    if (_isExternalUpdate) {
+      _refreshSubcolsFromServer(false, 2000);
     }
 
     _clearStatusCache(); _dashboardDirty = true; _rentasDirty = true;
