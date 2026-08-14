@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v88 · 13-ago-2026';
+var APP_VERSION = 'v89 · 13-ago-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -5732,8 +5732,45 @@ async function _migrateAbonosToSubcollection() {
 // ── FIN Fase 1 helpers ────────────────────────────────────────────────────────
 
 // ── WRITE: Save state to Firebase ─────────────────────────
+// FIX TS-APLANADO (2026-08): ESTA es la causa por la que updatedAt se guardaba malformado y se
+// leía como 1970 — el pendiente histórico que se había curado sólo del lado de la LECTURA con
+// _leerTs, sin encontrar nunca quién lo escribía mal.
+// serverTimestamp() no devuelve un dato: devuelve un objeto centinela que Firestore reconoce y
+// sustituye por la hora real del servidor al escribir. _sanitizeForFirestore recorría el payload
+// y RECONSTRUÍA cada objeto como uno plano, así que el centinela dejaba de serlo y llegaba a
+// Firestore como {} — un mapa vacío, sin fecha. Pasaba en CADA fbSave().
+// El daño no era cosmético: con updatedAt en 1970, toda la red de respaldo de sincronización
+// quedaba ciega. El poll ("¿el servidor tiene algo más nuevo que lo mío?") y los handlers de
+// visibilitychange comparan contra ese timestamp y siempre concluían que no había nada nuevo, así
+// que cuando un listener se caía o quedaba mudo NADA lo rescataba: de ahí los abonos que tardaban
+// entre 45s y 5 minutos en aparecer en otro dispositivo. La "cura única" del arranque reparaba el
+// campo y el primer guardado volvía a romperlo, por eso reaparecía en cada sesión.
+// Pista que lo confirmó: forceSyncToCloud es el único camino que NO pasa por aquí, y es el único
+// que dejaba un updatedAt bueno.
+function _esValorNativoFirestore(v) {
+  if (!v || typeof v !== 'object') return false;
+  if (v instanceof Date) return true;
+  try {
+    var _fs = (typeof firebase !== 'undefined' && firebase.firestore) ? firebase.firestore : null;
+    if (_fs) {
+      if (_fs.FieldValue && v instanceof _fs.FieldValue) return true;
+      if (_fs.Timestamp && v instanceof _fs.Timestamp) return true;
+      if (_fs.GeoPoint && v instanceof _fs.GeoPoint) return true;
+      if (_fs.DocumentReference && v instanceof _fs.DocumentReference) return true;
+    }
+  } catch(e) { /* SDK no listo — se cae al respaldo de abajo */ }
+  // Respaldo por si instanceof falla (subclases internas del SDK, builds transpilados):
+  // un Timestamp real trae toMillis/toDate; un centinela de FieldValue trae isEqual y no tiene
+  // claves propias enumerables — que es justo por lo que aplanarlo daba {}.
+  if (typeof v.toMillis === 'function' && typeof v.toDate === 'function') return true;
+  if (typeof v.isEqual === 'function' && Object.keys(v).length === 0) return true;
+  return false;
+}
 function _sanitizeForFirestore(obj) {
   if (obj === null || obj === undefined) return null;
+  // FIX TS-APLANADO: los valores nativos de Firestore se devuelven INTACTOS. Si se recorren y se
+  // reconstruyen, dejan de ser lo que Firestore espera.
+  if (_esValorNativoFirestore(obj)) return obj;
   if (Array.isArray(obj)) {
     return obj.map(function(item) { return _sanitizeForFirestore(item); });
   }
@@ -5928,6 +5965,12 @@ async function fbSave() {
     // SIEMPRE escribir al doc principal — garantiza que todos los dispositivos
     // puedan leer datos incluso sin reglas Firestore para subcollecciones
     var _payload = _sanitizeForFirestore(_syncPayload(_stripForSync(), ''));
+    // FIX TS-APLANADO (2026-08): red de seguridad. _sanitizeForFirestore ya respeta los centinelas
+    // (ver _esValorNativoFirestore), pero updatedAt es el campo del que depende TODA la red de
+    // respaldo de sincronización: si vuelve a llegar aplanado, el sistema queda ciego otra vez y
+    // el síntoma es carísimo de diagnosticar. Se reasigna explícitamente para no depender de que
+    // la detección acierte en cualquier versión del SDK.
+    _payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     // FIX MAINDOC-MERGE (2026-08): antes era docRef.set(_payload) a secas, que en Firestore
     // significa "el documento ES exactamente esto" — TODO campo del doc raíz que _syncPayload
     // no enumerara se borraba del servidor en cada autosave, sin error y sin aviso. Ya nos
@@ -24194,6 +24237,7 @@ async function importarDatos(input) {
         var docRef = tenantDoc();
         if (docRef) {
           var _payload = _sanitizeForFirestore(_syncPayload(_stripForSync(), ''));
+          _payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp(); // FIX TS-APLANADO
           // FIX MAINDOC-MERGE (2026-08): mergeFields para no borrar campos ajenos al payload.
           // Ver la explicación larga en fbSave().
           await docRef.set(_payload, { mergeFields: Object.keys(_payload) });
