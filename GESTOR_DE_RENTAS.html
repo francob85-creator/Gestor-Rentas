@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v94 · 02-sep-2026';
+var APP_VERSION = 'v95 · 02-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -17308,11 +17308,7 @@ async function ejecutarFusion() {
     return (a.inicio || '').localeCompare(b.inicio || '');
   });
 
-  // 1. Archivar ambas originales (conservan sus datos completos como backup)
-  r1.archivada = true; r1.archivadaEn = new Date().toISOString(); r1.archivadaMotivo = 'Fusionada con otra propiedad';
-  r2.archivada = true; r2.archivadaEn = new Date().toISOString(); r2.archivadaMotivo = 'Fusionada con otra propiedad';
-  r1._localWriteAt = Date.now(); r2._localWriteAt = Date.now();
-  // 2. Crear la propiedad fusionada con historial heredado limpio de info fiscal
+  // 1. Crear la propiedad fusionada con historial heredado limpio de info fiscal
   var nuevoId = uid();
   var montoTotal = (Number(r1.monto)||0) + (Number(r2.monto)||0);
   var nuevaRenta = {
@@ -17332,11 +17328,45 @@ async function ejecutarFusion() {
     _localWriteAt: Date.now()
   };
   state.rentas.push(nuevaRenta);
-  // 3. Persistir
+
+  // FIX FUSION-FANTASMA (2026-09): CREAR ANTES DE DESTRUIR.
+  // Antes esto archivaba r1 y r2 PRIMERO y escribía la fusionada AL FINAL. Cada `await` de las
+  // dos primeras escrituras cede el control, y el eco de esas mismas escrituras vuelve como
+  // onSnapshot; _applyRentasSnapshot borra de memoria toda renta que no venga en el snapshot y
+  // la fusionada todavía no estaba en el servidor, así que la eliminaba (y de paso borraba su
+  // escritura pendiente de la cola). Cuando por fin le tocaba su turno, _fbWriteRenta abortaba
+  // por su guardia de "ya no existe en el estado". Resultado: las dos originales archivadas y la
+  // fusionada nunca creada — reportado el 31-ago-2026 con conexión lenta, que ensancha la ventana.
+  // Ahora la fusionada se escribe y se confirma primero; si no logra subir, no se archiva nada.
   if (state._rentasMigratedV2) {
-    try { await _fbWriteRenta(r1); } catch(e) {}
-    try { await _fbWriteRenta(r2); } catch(e) {}
-    try { await _fbWriteRenta(nuevaRenta); } catch(e) {}
+    await _fbWriteRenta(nuevaRenta);
+    // _fbWriteRenta nunca relanza: encola en _pendingRentaWrites si falló y aborta en silencio si
+    // un snapshot ya sacó la renta del estado. Por eso el éxito se comprueba por esas dos señales
+    // y no con try/catch — los `catch(e) {}` vacíos que había aquí no atrapaban absolutamente nada.
+    var _fusionOk = _pendingRentaWrites[nuevoId] == null;
+    if (_fusionOk) {
+      _fusionOk = false;
+      for (var _fv = 0; _fv < state.rentas.length; _fv++) { if (state.rentas[_fv].id === nuevoId) { _fusionOk = true; break; } }
+    }
+    if (!_fusionOk) {
+      // Revertir: quitar la fusionada a medio hacer y NO archivar las originales. El usuario
+      // conserva sus dos propiedades intactas y puede reintentar con mejor conexión.
+      state.rentas = state.rentas.filter(function(_fr) { return _fr.id !== nuevoId; });
+      if (_pendingRentaWrites[nuevoId] != null) { delete _pendingRentaWrites[nuevoId]; _lsSavePendingRentaWrites(); }
+      console.error('[Fusion] La propiedad fusionada no pudo guardarse — fusión cancelada, las originales quedan intactas.');
+      showToast('⚠️ No se pudo crear la propiedad fusionada. No se archivó nada — inténtalo de nuevo con mejor conexión.');
+      return;
+    }
+  }
+
+  // 2. Ahora sí, archivar ambas originales (conservan sus datos completos como backup)
+  r1.archivada = true; r1.archivadaEn = new Date().toISOString(); r1.archivadaMotivo = 'Fusionada con otra propiedad';
+  r2.archivada = true; r2.archivadaEn = new Date().toISOString(); r2.archivadaMotivo = 'Fusionada con otra propiedad';
+  r1._localWriteAt = Date.now(); r2._localWriteAt = Date.now();
+  // 3. Persistir el archivado de las originales
+  if (state._rentasMigratedV2) {
+    await _fbWriteRenta(r1);
+    await _fbWriteRenta(r2);
   }
   forceSave();
   _clearStatusCache();
