@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v91 · 13-ago-2026';
+var APP_VERSION = 'v92 · 02-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -5946,7 +5946,11 @@ async function fbSave() {
       showToast('⏳ Reconectando con la nube…');
     }
     if (_fbSaveRetryCount === 50) {
-      _fbSaveRetryCount = 0;
+      // FIX AVISOS-BUCLE (2026-09): aquí se reiniciaba el contador a 0. Eso volvía INALCANZABLE
+      // la rendición del `> 150` de abajo, así que en redes lentas (reportado desde Islandia) el
+      // ciclo 3s "Reconectando…" → 10s "Sin conexión…" → reset se repetía cada 10s para siempre,
+      // y nunca se marcaba gestorrenta_pending_sync. Sin el reset el contador sí llega a 150, la
+      // cadena se rinde a los 30s, guarda local y corta. El fbStartSync de recuperación se queda.
       console.warn('[Sync] fbSave: Firebase no reconectó en 10s — forzando fbStartSync');
       showToast('⚠️ Sin conexión — reintentando…');
       if (!_fbUnsubscribe) fbStartSync();
