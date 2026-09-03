@@ -326,6 +326,20 @@ Corolarios ya aprendidos:
 - Importaciones: batches atómicos de 450 + guardia post-importación de 90s
   (`_postImportGuardUntil`).
 - `_visiblesCache` debe invalidarse por cambio de referencia, no por llamadas manuales.
+- **Firestore rechaza el documento ENTERO si un solo campo vale `undefined`**, y en JavaScript
+  `{ campo: undefined }` *sí crea la llave* (vacía) en vez de omitirla — `Object.assign` la
+  arrastra igual. Un `x ? valor : undefined` dentro de un objeto es una bomba. **Todo escritor de
+  Firestore debe pasar su payload por `_sanitizeForFirestore` antes del `set()`**, y sanearlo
+  ANTES de colgarle centinelas (`serverTimestamp`) para que el centinela ni pase por ahí. Se
+  sanea en el ESCRITOR, no en el origen: cura cualquier campo `undefined` presente y futuro.
+  Así nació `FIX ABONO-UNDEFINED` (2026-09): `facturaMultiMes` dejaba tres campos en `undefined`
+  al facturar un solo mes, y ese abono no pudo subir nunca.
+- **Toda cola de reintentos necesita tope, y el tope hay que LEERLO.** Contar los intentos sin
+  compararlos contra un máximo no sirve de nada. Un fallo permanente (no de red) convierte un
+  reintento "durable" en un bucle eterno de avisos: la app se ve rota aunque los datos estén a
+  salvo, y el usuario aprende a ignorar los avisos — que es peor que no tenerlos. Antes de
+  reintentar, pregúntate **si este error puede tener éxito alguna vez**; si no, ríndete y avisa
+  una sola vez. Ver `FIX AVISOS-BUCLE` y `FIX ABONO-UNDEFINED` (2026-09).
 
 ---
 

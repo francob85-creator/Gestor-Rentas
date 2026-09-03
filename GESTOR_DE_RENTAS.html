@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v93 · 02-sep-2026';
+var APP_VERSION = 'v94 · 02-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4942,7 +4942,12 @@ async function _fbWriteCliente(cliente) {
   // FIX SNAPSHOT-STALE: marcar escritura local reciente
   cliente._localWriteAt = Date.now();
   try {
-    var data = _stripClienteForSync(cliente);
+    // FIX CLIENTE-UNDEFINED (2026-09): espejo del FIX ABONO-UNDEFINED. Firestore rechaza el
+    // documento entero si algún campo vale undefined, y en JS `{ campo: undefined }` crea la llave
+    // vacía en vez de omitirla. Aquí todavía no truena porque ningún campo de cliente llega así,
+    // pero era el mismo hueco que en _fbWriteAbono: un set() sin sanear. Se sanea ANTES de poner
+    // updatedAt para que el centinela serverTimestamp ni siquiera pase por el sanitizador.
+    var data = _sanitizeForFirestore(_stripClienteForSync(cliente));
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     data._sessionId = _fbSessionId;
     await col.doc(cliente.id).set(data);
