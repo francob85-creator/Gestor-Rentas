@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v96 · 03-sep-2026';
+var APP_VERSION = 'v97 · 03-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4177,6 +4177,17 @@ var _migrationRan = false;   // migration only runs once per session
 var _fbJustSaved = 0;        // timestamp of last fbSave
 var _fbReady = false;        // true after first snapshot
 var _fbSaveRetryCount = 0;   // fbSave retry counter
+// FIX SAVE-CADENAS (2026-09): sin esto cada save() que caía en "Firebase no listo" arrancaba SU
+// PROPIA cadena de setTimeout(fbSave,200), y todas compartían _fbSaveRetryCount. Con varias
+// cadenas vivas el contador subía al doble o triple de velocidad y los avisos salían mucho más
+// seguido de lo previsto. Basta una cadena: fbSave escribe el `state` global del momento en que
+// logra correr, así que la que ya está esperando publica los cambios de todas.
+var _fbSaveChainActive = false;
+// FIX SAVE-ERR-TOPE (2026-09): tope de reintentos de la ruta de ERROR de escritura. Antes
+// reintentaba cada 2s indefinidamente; un fallo permanente (permisos, dato inválido) era un
+// bucle eterno. Ver el corolario de colas de reintentos en CLAUDE.md.
+var _fbSaveErrRetries = 0;
+var _FB_SAVE_ERR_MAX = 5;    // 5 intentos × 2s ≈ 10s antes de rendirse
 var _snapshotRetryCount = 0; // onSnapshot reconnect retry counter
 var _initialServerFetchDone = false; // FIX SYNC: only force server fetch once per session
 var _tenantPassPlain = '';   // FIX SUBUSER MAPPING: holds titular password in memory for AES encryption of sub-user mappings
@@ -5951,9 +5962,13 @@ function forceSave() {
   fbSave();
 }
 
-async function fbSave() {
+async function fbSave(_esCadena) {
   // Don't save while syncing — state is mid-update from Firestore
   if (_fbSyncing || !_fbReady) {
+    // FIX SAVE-CADENAS (2026-09): si ya hay una cadena de reintentos esperando, no arrancar otra.
+    // La que está viva escribirá el state actual —que ya incluye este cambio— cuando le toque.
+    if (_fbSaveChainActive && !_esCadena) return;
+    _fbSaveChainActive = true;
     _fbSaveRetryCount++;
     if (_fbSaveRetryCount === 15) {
       showToast('⏳ Reconectando con la nube…');
@@ -5971,6 +5986,7 @@ async function fbSave() {
     if (_fbSaveRetryCount > 150) {
       // 30s absolute max — stop stacking retries
       _fbSaveRetryCount = 0;
+      _fbSaveChainActive = false; // la cadena termina aquí; un save() futuro puede abrir otra
       _registrarErrorSync('fbSave', 'Abandonado tras 30s sin conexión');
       // Mark as pending so next session retries immediately
       try { localStorage.setItem('gestorrenta_pending_sync', '1'); } catch(e) {}
@@ -5979,9 +5995,10 @@ async function fbSave() {
       _fbShowPendingSync(true);
       return;
     }
-    setTimeout(fbSave, 200);
+    setTimeout(function(){ fbSave(true); }, 200);
     return;
   }
+  _fbSaveChainActive = false;
   _fbSaveRetryCount = 0;
   // Deadlock guard: if _fbWriting stuck for >10s, force-release
   if (_fbWriting) {
@@ -6028,6 +6045,7 @@ async function fbSave() {
     // This reduces Firestore writes from O(n) to O(1) per save operation.
     _fbJustSaved = Date.now();
     _syncOk = true;
+    _fbSaveErrRetries = 0; // FIX SAVE-ERR-TOPE: escritura buena → el tope arranca limpio
     _showSaveConfirm('ok');
     _fbLastCloudTs = _fbJustSaved;
     // Clear pending flag — sync succeeded
@@ -6042,11 +6060,35 @@ async function fbSave() {
       showToast('⚠️ Datos muy grandes para sincronizar');
     } else {
       _showSaveConfirm('error');
-      window._syncTelemetry.reintentosPendientes++;
-      setTimeout(function() {
-        window._syncTelemetry.reintentosPendientes = Math.max(0, window._syncTelemetry.reintentosPendientes - 1);
-        fbSave();
-      }, 2000);
+      // FIX SAVE-ERR-TOPE (2026-09): esto reintentaba cada 2s SIN TOPE. Con un fallo transitorio
+      // (red) acababa saliendo; con uno permanente —permisos, dato inválido, tenant equivocado—
+      // era un bucle eterno que dejaba la app en estado de error para siempre. Dos cortes:
+      // los errores que nunca van a tener éxito no se reintentan ni una vez, y los demás tienen
+      // un máximo. Al rendirse se hace lo mismo que en el camino sin conexión: los datos ya
+      // quedaron en localStorage por el _lsSave() de arriba, se marca pendiente para la próxima
+      // sesión y se avisa UNA sola vez.
+      var _codigo = (e && e.code) ? String(e.code) : '';
+      var _esPermanente = _codigo === 'permission-denied' || _codigo === 'unauthenticated'
+                       || _codigo === 'invalid-argument' || _codigo === 'not-found';
+      _fbSaveErrRetries++;
+      if (_esPermanente || _fbSaveErrRetries >= _FB_SAVE_ERR_MAX) {
+        _fbSaveErrRetries = 0;
+        console.error('[Sync] fbSave: se abandona el reintento — ' + (_esPermanente
+          ? 'error permanente (' + _codigo + '), reintentar no puede funcionar.'
+          : 'se agotaron los ' + _FB_SAVE_ERR_MAX + ' intentos.'));
+        try { localStorage.setItem('gestorrenta_pending_sync', '1'); } catch(e2) {}
+        _showSaveConfirm('offline');
+        _fbShowPendingSync(true);
+        showToast(_esPermanente
+          ? '⚠️ No se pudo guardar en la nube. Tus datos están a salvo en este dispositivo.'
+          : '⚠️ Sin conexión — datos guardados localmente. Se sincronizarán al reconectar.');
+      } else {
+        window._syncTelemetry.reintentosPendientes++;
+        setTimeout(function() {
+          window._syncTelemetry.reintentosPendientes = Math.max(0, window._syncTelemetry.reintentosPendientes - 1);
+          fbSave();
+        }, 2000);
+      }
     }
   } finally {
     _fbWriting = false; // ALWAYS release the write lock — prevents deadlock
@@ -7456,6 +7498,8 @@ function fbStopSync() {
   if (window._blancoSafetyTimer) { clearTimeout(window._blancoSafetyTimer); window._blancoSafetyTimer = null; }
   _migrarPagosRan = false;   // reset on session end
   _fbSaveRetryCount = 0;       // reset on session end
+  _fbSaveChainActive = false;  // reset on session end — la cadena vieja no debe bloquear la nueva
+  _fbSaveErrRetries = 0;       // reset on session end
   _snapshotRetryCount = 0;     // reset on session end
   _diasGraciaCache = null;   // reset on session end
   _rentaMapCache = null;     // reset on session end
