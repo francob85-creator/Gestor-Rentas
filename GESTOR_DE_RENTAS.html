@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v95 · 02-sep-2026';
+var APP_VERSION = 'v96 · 03-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -17206,6 +17206,7 @@ function abrirFusionarPropiedad(rentaId) {
     sel.innerHTML += '<option value="' + r.id + '">' + escHtml(label) + '</option>';
   });
   document.getElementById('fusionar-nombre').value = '';
+  document.getElementById('fusionar-monto').value = '';
   document.getElementById('fusionar-m2').value = '';
   document.getElementById('fusionar-preview').style.display = 'none';
   openModal('modalFusionar');
@@ -17228,8 +17229,11 @@ function renderFusionarPreview() {
     + '<b>m² totales:</b> ' + m2Total + ' m²<br>'
     + '<span style="color:var(--text3);font-size:12px">Las propiedades originales se archivarán (conservando historiales)</span>'
     + '</div>';
-  // Sugerir nombre y m2
+  // Sugerir nombre, monto y m2
   document.getElementById('fusionar-nombre').value = r1.nombre + ' + ' + r2.nombre;
+  // FIX FUSION-MONTO (2026-09): el monto de la fusionada era SIEMPRE la suma de las dos, sin
+  // forma de capturar otro — no había campo. Ahora se propone la suma y queda editable.
+  document.getElementById('fusionar-monto').value = montoTotal;
   document.getElementById('fusionar-m2').value = m2Total;
 }
 
@@ -17238,19 +17242,37 @@ async function ejecutarFusion() {
   var targetId = document.getElementById('fusionar-target-sel').value;
   var nombre = document.getElementById('fusionar-nombre').value.trim();
   var m2 = Number(document.getElementById('fusionar-m2').value) || 0;
+  var _montoCapturado = Number(document.getElementById('fusionar-monto').value);
   if (!rentaId || !targetId) { showToast('⚠️ Selecciona una propiedad'); return; }
   if (!nombre) { showToast('⚠️ Captura el nombre de la fusionada'); return; }
+  if (!(_montoCapturado > 0)) { showToast('⚠️ Captura la renta mensual de la fusionada'); return; }
   var r1 = _getRentaMap()[rentaId];
   var r2 = _getRentaMap()[targetId];
   if (!r1 || !r2) { showToast('⚠️ Propiedad no encontrada'); return; }
+  // FIX FUSION-DUPLICADA (2026-09): la fusión no tenía guardia de doble-toque (a diferencia de
+  // eliminarRenta) y el botón no se deshabilita, así que con conexión lenta —el modal se queda
+  // abierto varios segundos sin señal— un segundo clic corría la operación completa otra vez.
+  // Como _getRentaMap() SÍ incluye las archivadas, el segundo pase volvía a encontrar las dos
+  // originales (ya archivadas) y creaba una segunda propiedad fusionada duplicada. Reportado el
+  // 02-sep-2026: dos "JUAREZ Local D y E" idénticas. Dos capas: la guardia de operación en curso,
+  // y el rechazo explícito de fusionar algo ya archivado —que no tiene ningún sentido y sirve
+  // aunque el doble toque se cuele por otra vía.
+  if (r1.archivada || r2.archivada) {
+    showToast('⚠️ Esa propiedad ya está archivada — no se puede volver a fusionar.');
+    return;
+  }
   // Detectar si hay abonos facturados (para avisar al usuario)
   var _facturados = ((r1.abonos||[]).filter(function(a){ return a.uuid; }).length)
                    + ((r2.abonos||[]).filter(function(a){ return a.uuid; }).length);
   // Confirmar
-  var _msgConfirm = '¿Confirmas fusionar?\n\n• ' + r1.nombre + '\n• ' + r2.nombre + '\n\n→ ' + nombre
+  var _msgConfirm = '¿Confirmas fusionar?\n\n• ' + r1.nombre + '\n• ' + r2.nombre + '\n\n→ ' + nombre + ' — $' + fmt(_montoCapturado) + '/mes'
     + '\n\nLas originales se archivarán (puedes restaurar desde Configuración).'
     + (_facturados > 0 ? '\n\n⚠️ Se limpiará info fiscal de ' + _facturados + ' abono(s) facturado(s) — los pagos se conservan como subtotales sin UUID.' : '');
   if (!confirm(_msgConfirm)) return;
+  // La guardia va DESPUÉS del confirm a propósito: confirm() bloquea el hilo, así que el doble
+  // toque solo puede colarse en los await de abajo. Ponerla antes dejaría la operación marcada
+  // como "en curso" 20s aunque el usuario cancelara, bloqueando un reintento legítimo.
+  if (!_iniciarOp('ejecutarFusion:' + rentaId + '+' + targetId, 20000)) return;
 
   // FIX FUSION-HISTORIAL: consolidar historiales de ambas originales en la nueva.
   // Los abonos se limpian de info fiscal (UUID, pagosAcuenta, etc.) usando _limpiarAbonoFiscal.
@@ -17310,7 +17332,9 @@ async function ejecutarFusion() {
 
   // 1. Crear la propiedad fusionada con historial heredado limpio de info fiscal
   var nuevoId = uid();
-  var montoTotal = (Number(r1.monto)||0) + (Number(r2.monto)||0);
+  // FIX FUSION-MONTO (2026-09): antes era siempre la suma de las dos originales, sin forma de
+  // cambiarla porque no existía el campo. Ahora sale del modal, prellenado con esa misma suma.
+  var montoTotal = _montoCapturado;
   var nuevaRenta = {
     id: nuevoId,
     nombre: nombre,
@@ -17353,6 +17377,9 @@ async function ejecutarFusion() {
       // conserva sus dos propiedades intactas y puede reintentar con mejor conexión.
       state.rentas = state.rentas.filter(function(_fr) { return _fr.id !== nuevoId; });
       if (_pendingRentaWrites[nuevoId] != null) { delete _pendingRentaWrites[nuevoId]; _lsSavePendingRentaWrites(); }
+      // Liberar la guardia de doble-toque: aquí no se cambió nada y el mensaje invita a
+      // reintentar, así que no tiene caso dejarlo bloqueado los 20s completos.
+      delete _opEnCurso['ejecutarFusion:' + rentaId + '+' + targetId];
       console.error('[Fusion] La propiedad fusionada no pudo guardarse — fusión cancelada, las originales quedan intactas.');
       showToast('⚠️ No se pudo crear la propiedad fusionada. No se archivó nada — inténtalo de nuevo con mejor conexión.');
       return;
@@ -27760,6 +27787,11 @@ async function _scanRecomprimir(paginas, quality, maxDim) {
       <div class="form-group" style="margin-top:14px">
         <label>Nombre de la propiedad fusionada *</label>
         <input id="fusionar-nombre" placeholder="Ej: JUAREZ Local A+B" />
+      </div>
+      <div class="form-group">
+        <label>Renta mensual *</label>
+        <input id="fusionar-monto" type="number" placeholder="0" min="0" step="any" />
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Se propone la suma de las dos originales — cámbialo si el precio de la fusionada es otro.</div>
       </div>
       <div class="form-group">
         <label>m² totales (opcional)</label>
