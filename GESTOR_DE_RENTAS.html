@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v92 · 02-sep-2026';
+var APP_VERSION = 'v93 · 02-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4291,7 +4291,15 @@ async function _fbWriteAbono(rentaId, abono) {
     console.warn('[Sync] _fbWriteAbono abortado — el abono ' + abono.id + ' tiene un borrado pendiente.');
     return;
   }
-  var data = Object.assign({}, _stripAbonoForSync(abono), { rentaId: rentaId });
+  // FIX ABONO-UNDEFINED (2026-09): Firestore RECHAZA cualquier campo con valor undefined, y en JS
+  // `{ campo: undefined }` sí crea la llave (vacía) en vez de omitirla. facturarMultiMes deja tres
+  // campos así cuando la factura cubre un solo mes, y Object.assign los arrastra hasta aquí. El
+  // set() fallaba siempre, el abono se quedaba en _pendingAbonoWrites, y el flush lo reintentaba
+  // cada 20s para siempre — dos toasts por ciclo, sin tope de reintentos ("error al guardar abono"
+  // saliendo sin parar, reportado desde Islandia). _sanitizeForFirestore ya se usaba en el doc
+  // principal pero nunca aquí; sanear en el escritor cura cualquier campo undefined, no solo esos
+  // tres, y respeta los valores nativos de Firestore (serverTimestamp).
+  var data = _sanitizeForFirestore(Object.assign({}, _stripAbonoForSync(abono), { rentaId: rentaId }));
   _fbJustSaved = Date.now(); // FIX A1: suppress echo (consistente con _fbDeleteAbono)
   // No batch bump on main doc — save() already updates mainDoc.updatedAt
   // after every _fbWriteAbono call, triggering onSnapshot on other devices.
