@@ -20907,10 +20907,18 @@ function dashGoFP(fpId) {
   } else {
     // Helper: calcular el monto efectivo igual que el KPI (abono cerrado / neto fiscal / monto base)
     function _calcMontoEsperadoFP(r) {
-      var _monto = Number(r.monto) || 0;
-      var _montoBaseFP = _monto; // renta base antes de overrides
       var _hoyFp = new Date();
       var _mesActual = _hoyFp.getFullYear() + '-' + String(_hoyFp.getMonth()+1).padStart(2,'0');
+      // FIX FP-MODAL-MONTO (2026-09): este helper arrancaba de r.monto CRUDO mientras que su
+      // contraparte en el dashboard, _computeFPData, arranca de _montoEfectivoEnMes. Las dos
+      // cifras se separan cuando una propiedad tiene un incremento registrado en historialMonto
+      // pero su campo r.monto conserva el valor anterior: el KPI de la forma de pago mostraba un
+      // total y el modal que se abre al picarle mostraba otro. Es el mismo desfase de
+      // FIX DESGLOSE-TIPO-MONTO (2026-09) y FIX POTENCIAL-MODAL-MISMATCH (2026-06) — la regla
+      // "monto que aplica este mes" vive copiada en varios lugares y cada copia se arregló por
+      // separado. El cálculo de _mesActual se movió arriba porque ahora hace falta antes.
+      var _monto = _montoEfectivoEnMes(r, _mesActual);
+      var _montoBaseFP = _monto; // renta base antes de overrides
       var _abonoCerrado = (r.abonos || []).find(function(a) {
         return a.mes === _mesActual && !a.pendientePago;
       });
