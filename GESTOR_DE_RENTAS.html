@@ -21821,12 +21821,15 @@ async function generarReporteMensual() {
     var cliente = getClienteNombre(renta.clienteId);
     var fp = renta.formaPagoId ? state.formasPago.find(function(f){ return f.id === renta.formaPagoId; }) : null;
     var abonosMes = (renta.abonos||[]).filter(function(a){ return a.mes === mes; });
+    // FIX REPORTE-MES-MONTO (2026-09): la renta del mes reportado, no la de hoy. Ver la nota
+    // completa en la hoja "Estado del mes" más abajo.
+    var _montoMesH1 = _montoEfectivoEnMes(renta, mes);
     if (abonosMes.length > 0) {
       abonosMes.forEach(function(a) {
-        cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':Number(renta.monto)||0,'Fecha de pago':a.fecha||'—','Monto cobrado':Number(a.monto)||0,'Forma de pago':a.metodo||(fp?fp.nombre:'—'),'Nota':a.nota||'','CFDI':a.uuid?'Timbrada':(a.cancelada?'Cancelada':'—') });
+        cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':_montoMesH1,'Fecha de pago':a.fecha||'—','Monto cobrado':Number(a.monto)||0,'Forma de pago':a.metodo||(fp?fp.nombre:'—'),'Nota':a.nota||'','CFDI':a.uuid?'Timbrada':(a.cancelada?'Cancelada':'—') });
       });
     } else if (renta.clienteId) {
-      cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':Number(renta.monto)||0,'Fecha de pago':'—','Monto cobrado':0,'Forma de pago':fp?fp.nombre:'—','Nota':'Sin pago registrado','CFDI':'—' });
+      cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':_montoMesH1,'Fecha de pago':'—','Monto cobrado':0,'Forma de pago':fp?fp.nombre:'—','Nota':'Sin pago registrado','CFDI':'—' });
     }
   });
   cobros.sort(function(a,b){ return a['Propiedad'].localeCompare(b['Propiedad']); });
@@ -21917,7 +21920,9 @@ async function descargarReportePagos() {
         'Propiedad':      renta.nombre,
         'Tipo':           renta.tipo || 'Otro',
         'Cliente':        cliente,
-        'Renta Mensual':  Number(renta.monto) || 0,
+        // FIX REPORTE-PAGOS-MONTO (2026-09): sin pagos, la renta relevante es la vigente hoy.
+        // r.monto puede estar desfasado respecto a historialMonto (ver FIX DESGLOSE-TIPO-MONTO).
+        'Renta Mensual':  _montoEfectivoEnMes(renta, mesActual),
         'Fecha de Pago':  '—',
         'Mes Aplicado':   '—',
         'Monto Pagado':   0,
@@ -21934,7 +21939,11 @@ async function descargarReportePagos() {
           'Propiedad':      renta.nombre,
           'Tipo':           renta.tipo || 'Otro',
           'Cliente':        cliente,
-          'Renta Mensual':  Number(renta.monto) || 0,
+          // FIX REPORTE-PAGOS-MONTO (2026-09): cada fila es UN abono y ya trae su "Mes Aplicado",
+          // así que la renta de la fila debe ser la que regía ESE mes, no la de hoy. Con la renta
+          // actual, una fila de marzo mostraba el monto posterior al incremento junto al pago real
+          // de marzo, y la fila no cuadraba consigo misma.
+          'Renta Mensual':  _montoEfectivoEnMes(renta, abono.mes || mesActual),
           'Fecha de Pago':  abono.fecha || '—',
           'Mes Aplicado':   abono.mes   || '—',
           'Monto Pagado':   Number(abono.monto) || 0,
@@ -22002,7 +22011,11 @@ async function descargarReportePagos() {
       'Propiedad':        renta.nombre,
       'Tipo':             renta.tipo || 'Otro',
       'Cliente':          getClienteNombre(renta.clienteId),
-      'Renta Mensual':    Number(renta.monto) || 0,
+      // FIX REPORTE-PAGOS-MONTO (2026-09): esta hoja es el resumen del estado ACTUAL, y sus otras
+      // columnas (Total Pagado, Saldo Pendiente, Estado) salen de getStatusRenta, que internamente
+      // usa el monto efectivo. La renta salía de r.monto crudo, así que con un incremento
+      // desfasado la fila no cuadraba consigo misma: renta, pagado y saldo no daban entre sí.
+      'Renta Mensual':    _montoEfectivoEnMes(renta, mesActual),
       'Total Pagado':     st.totalPagado,
       'Saldo Pendiente':  st.saldo,
       'Estado':           st.estado === 'sin-rentar' ? 'Sin rentar' :
