@@ -10635,8 +10635,22 @@ window.testCalculos = function() {
   var _visibles = getRentasVisibles();
   var _potencial = 0, _actual = 0, _vencidos = 0, _aFavor = 0;
   var _propsRentadas = 0, _propsTotal = _visibles.length;
+  // FIX AUTOCHECK-MONTO (2026-09): este bloque sumaba r.monto CRUDO, o sea con una regla
+  // distinta a la del dashboard que dice estar verificando. No daba falsos positivos porque sus
+  // comprobaciones son relativas (potencial >= actual, >= 0), pero por eso mismo NO detectó
+  // FIX DESGLOSE-TIPO-MONTO: el desglose por tipo llevaba meses sumando distinto al KPI y el
+  // autodiagnóstico decía que todo estaba bien. Ahora usa la misma regla que el dashboard, y
+  // además cuenta cuántas propiedades tienen el campo r.monto desfasado respecto a
+  // historialMonto — que es la condición que hace divergir a todos estos cálculos.
+  var _hoyAC = new Date();
+  var _mesAC = _hoyAC.getFullYear() + '-' + String(_hoyAC.getMonth() + 1).padStart(2, '0');
+  var _desfasadas = [];
   _visibles.forEach(function(r) {
-    var _m = Number(r.monto) || 0;
+    var _m = _montoEfectivoEnMes(r, _mesAC);
+    var _crudo = Number(r.monto) || 0;
+    if (Math.abs(_m - _crudo) >= 1) {
+      _desfasadas.push(r.nombre + ' (campo: ' + _crudo + ' · vigente: ' + _m + ')');
+    }
     _potencial += _m;
     if (r.clienteId && r.clienteId !== '' && !r.bajaProgramada) {
       var st = getStatusRenta(r);
@@ -10654,6 +10668,12 @@ window.testCalculos = function() {
   _check('propsRentadas <= propsTotal', _propsRentadas <= _propsTotal);
   _check('vencidos >= 0', _vencidos >= 0);
   _check('aFavor >= 0', _aFavor >= 0);
+  // FIX AUTOCHECK-MONTO (2026-09): aviso, no falla. Que el campo r.monto de una propiedad no
+  // coincida con su historialMonto no rompe nada por sí solo — el dashboard ya usa el vigente —
+  // pero es la condición exacta que destapó los desajustes entre pantallas, así que conviene
+  // verlas listadas. No se corrigen automáticamente: "el pasado no se toca".
+  _check('r.monto al día con historialMonto', _desfasadas.length === 0,
+    _desfasadas.length + ' propiedad(es) con el campo desfasado: ' + _desfasadas.join(' | '));
 
   // Si hay rentas, debe haber al menos un potencial > 0
   if (_visibles.length > 0) {
