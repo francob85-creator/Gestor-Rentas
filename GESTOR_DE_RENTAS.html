@@ -21840,9 +21840,20 @@ async function generarReporteMensual() {
     var st = getStatusRenta(renta);
     var abonosMes = (renta.abonos||[]).filter(function(a){ return a.mes === mes; });
     var cobradoMes = abonosMes.reduce(function(s,a){ return s+(Number(a.monto)||0); },0);
-    var pendiente = Math.max(0,(Number(renta.monto)||0)-cobradoMes);
-    var estadoStr = cobradoMes>=(Number(renta.monto)||0)?'Pagado':cobradoMes>0?'Parcial':'Sin pago';
-    var obj = { 'Propiedad':renta.nombre,'Inquilino':getClienteNombre(renta.clienteId),'Renta mensual':Number(renta.monto)||0 };
+    // FIX REPORTE-MES-MONTO (2026-09): las tres cifras de esta hoja salían de r.monto CRUDO, que
+    // es el monto de HOY y encima puede estar desfasado respecto a historialMonto. En un reporte
+    // de un mes pasado eso es doblemente incorrecto: si hubo un incremento, la renta que aplicaba
+    // en marzo no es la de hoy. _montoEfectivoEnMes(renta, mes) devuelve la que regía ESE mes.
+    // NO se sustituye estadoStr por st.estado a propósito: st.estado es el estado GLOBAL de la
+    // propiedad hoy, y esta columna responde otra pregunta — "¿se cobró este mes?". Cambiarlo
+    // marcaría "Atrasado" un marzo pagado completo solo porque hoy deben agosto.
+    // Sí se adopta el umbral de $1 de getStatusRenta: residuos de redondeo de IVA/retenciones
+    // marcaban "Parcial" una renta pagada por diferencias de centavos.
+    var _montoMes = _montoEfectivoEnMes(renta, mes);
+    var pendiente = Math.max(0, _montoMes - cobradoMes);
+    if (pendiente < 1) pendiente = 0;
+    var estadoStr = pendiente === 0 ? 'Pagado' : cobradoMes > 0 ? 'Parcial' : 'Sin pago';
+    var obj = { 'Propiedad':renta.nombre,'Inquilino':getClienteNombre(renta.clienteId),'Renta mensual':_montoMes };
     obj['Cobrado ' + mesLabel] = cobradoMes;
     obj['Pendiente'] = pendiente;
     obj['Estado'] = estadoStr;
