@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v97 · 03-sep-2026';
+var APP_VERSION = 'v98 · 25-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -13502,7 +13502,16 @@ function renderDashboard() {
     // FIX MONTO-HISTORICO: si la propiedad está sin cliente y tiene monto=0 pero tuvo
     // inquilino antes, usar el último monto del historial. Esto evita que propiedades
     // recién dadas de baja desaparezcan del cálculo de "Sin rentar" por tipo.
-    var _monto = Number(r.monto) || 0;
+    // FIX DESGLOSE-TIPO-MONTO (2026-09): este loop sumaba r.monto CRUDO mientras que el KPI
+    // POTENCIAL (arriba, con _mesSel) y el modal del desglose usan _montoEfectivoEnMes. Cuando
+    // una propiedad tiene un incremento registrado en historialMonto pero su campo r.monto
+    // conserva el valor viejo, las dos cifras dejan de cuadrar: la barra verde del tipo mostraba
+    // menos que el modal que se abre al picarle (caso real: Franco Propiedades, $377,795 en la
+    // barra vs $378,895 en el modal — $1,100 de un incremento que el historial ya tenía).
+    // Es el mismo desfase que FIX POTENCIAL-MODAL-MISMATCH (2026-06) curó en el modal; este loop
+    // se quedó sin alinear. El monto efectivo es el criterio correcto: es el que usa el KPI
+    // global y el que getStatusRenta aplica internamente vía _getMontoParaFecha.
+    var _monto = _montoEfectivoEnMes(r, _mesSel);
     if (_monto === 0 && (!r.clienteId || r.clienteId === '') && r.historialInquilinos && r.historialInquilinos.length) {
       var _ultH = r.historialInquilinos[r.historialInquilinos.length - 1];
       if (_ultH && _ultH.monto) _monto = Number(_ultH.monto) || 0;
