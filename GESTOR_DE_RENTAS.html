@@ -11654,6 +11654,19 @@ function _calcMontoFiscalBruto(renta) {
 }
 
 var _migrarPagosRan = false; // only run once per session — abonos already migrated
+// AVISO MIGRACION-INERTE (2026-09): los dos campos que escribe esta migración —a.pagoCompleto y
+// a.montoFiscalBruto— NO los lee nadie. Se buscaron en todo el repositorio: pagoCompleto solo
+// aparece aquí y en la guarda de la línea de abajo (para no marcar dos veces), y
+// montoFiscalBruto solo se escribe. Ninguna pantalla, reporte ni cálculo fiscal los consume.
+// Consecuencias de eso, por si alguien la revisa en el futuro:
+//   · No hay riesgo fiscal. _calcMontoFiscalBruto no alimenta ninguna factura; su único
+//     llamador es esta función.
+//   · Usa r.monto CRUDO, así que con un incremento desfasado respecto a historialMonto puede
+//     marcar abonos que no corresponden. Hoy da igual porque nadie lee el campo. NO CONSTRUYAS
+//     encima de pagoCompleto sin arreglar antes esa base (ver FIX MONTO-VIGENTE).
+//   · Escribe en abonos históricos y dispara _saveCore() la primera vez que encuentra
+//     coincidencias. Deliberadamente NO se corrige el cálculo: cambiarlo alteraría qué abonos
+//     quedan marcados, o sea modificaría registros pasados, para alimentar un campo inerte.
 function migrarPagosCompletos() {
   if (_migrarPagosRan) return;
   var changed = false;
@@ -19061,7 +19074,12 @@ function initAbonoQuickFill() {
   var cliente = (_getCliMap()[renta.clienteId] || null);
   if (!cliente) { panel.style.display = 'none'; return; }
 
-  var monto = Number(renta.monto) || 0;
+  // FIX MONTO-VIGENTE (2026-09): este es el monto con el que se auto-llena el formulario al
+  // registrar un pago, y la base sobre la que se calcula el desglose fiscal de abajo. Salía de
+  // r.monto crudo, que puede haber quedado desfasado respecto a historialMonto tras un
+  // incremento — se sugería cobrar de menos, y el IVA y las retenciones se calculaban sobre la
+  // base equivocada. Sigue siendo una sugerencia editable, pero ahora parte de la renta vigente.
+  var monto = _montoVigenteHoy(renta);
   if (!monto) { panel.style.display='none'; var _h2=new Date(); _abonoMesesSel=[_h2.getFullYear()+'-'+String(_h2.getMonth()+1).padStart(2,'0')]; renderMesesSel(); return; }
 
   // Check if client has factura with desglose
