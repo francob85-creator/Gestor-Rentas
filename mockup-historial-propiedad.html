@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Historial de la propiedad</title>
+<style>
+  :root {
+    --surface:#fff; --surface2:#f0f0f4; --border:#e2e2e8; --accent:#2d6a4f;
+    --danger:#c0392b; --danger-light:#fdf0ee; --warning:#b7791f; --warning-light:#fef9ec;
+    --success:#2d6a4f; --text:#2c2c2c; --text2:#5c5c66; --text3:#9292a0;
+  }
+  *{box-sizing:border-box}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fa;color:var(--text);
+    margin:0;padding:16px 12px 60px;-webkit-text-size-adjust:100%}
+  h1{font-size:19px;margin:0 0 4px}
+  .intro{font-size:13px;color:var(--text2);margin:0 0 22px;line-height:1.5;max-width:760px}
+  .variante{margin-bottom:34px}
+  .variante>h2{font-size:15px;margin:0 0 3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;background:var(--accent);color:#fff;padding:2px 8px;border-radius:20px}
+  .variante>p{font-size:12.5px;color:var(--text2);margin:0 0 12px;line-height:1.5}
+
+  /* ── CSS copiado de la app ── */
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);border-top:3px solid transparent;overflow:hidden;min-width:0}
+  .kpi-card.green{border-top-color:var(--success)}
+  .kpi-card.teal{border-top-color:#0d9488}
+  .kpi-val{font-variant-numeric:tabular-nums;font-size:30px;font-weight:500;color:var(--text);line-height:1.15}
+  .kpi-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3)}
+  .kpi-sub{font-size:13px;color:var(--text3);margin-top:4px}
+  .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  @media(max-width:520px){ .kpi-row{grid-template-columns:1fr} }
+
+  .pantalla{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:8px}
+  .pantalla-tit{font-size:17px;font-weight:700;margin:0 0 2px}
+  .pantalla-sub{font-size:12px;color:var(--text3);margin:0 0 14px}
+
+  .sec-tit{font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:var(--text3);
+    margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+  .sec-tit::after{content:'';flex:1;height:1px;background:var(--border)}
+
+  /* línea de tiempo de inquilinos */
+  .inq{border-left:3px solid var(--border);padding:0 0 16px 14px;position:relative;margin-left:5px}
+  .inq:last-child{padding-bottom:0}
+  .inq::before{content:'';position:absolute;left:-7px;top:3px;width:11px;height:11px;border-radius:50%;
+    background:var(--surface);border:3px solid var(--text3)}
+  .inq.actual::before{border-color:var(--success);background:var(--success)}
+  .inq.actual{border-left-color:var(--success)}
+  .inq-nom{font-weight:600;font-size:14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .inq-per{font-size:11.5px;color:var(--text3);margin-top:1px}
+  .inq-cifras{display:flex;gap:16px;margin-top:6px;flex-wrap:wrap}
+  .inq-cif{font-size:12px;color:var(--text2)}
+  .inq-cif b{display:block;font-size:15px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+  .badge{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:2px 7px;border-radius:20px}
+  .badge.hoy{background:#e8f5ec;color:#1b5e3f}
+  .badge.ex{background:var(--surface2);color:var(--text3)}
+
+  .total-vida{background:linear-gradient(180deg,#f2f8f4,#eaf4ee);border:1px solid rgba(45,106,79,.25);
+    border-radius:12px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .total-vida .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);font-weight:700}
+  .total-vida .sub{font-size:11.5px;color:var(--text3);margin-top:2px}
+  .total-vida .val{font-variant-numeric:tabular-nums;font-size:26px;font-weight:800;color:var(--accent)}
+
+  .nota{font-size:12px;color:var(--text2);background:#fff;border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:6px;padding:10px 12px;margin-top:12px;line-height:1.5}
+  .divisor{height:1px;background:var(--border);margin:26px 0}
+  .mini{font-size:11px;color:var(--text3);margin-top:8px}
+</style>
+</head>
+<body>
+
+<h1>Historial de ingresos de la propiedad</h1>
+<p class="intro">
+  Hoy el detalle de una propiedad solo te muestra lo del inquilino que la ocupa <b>ahora</b>. Todo lo que
+  cobraste antes está guardado pero no se ve por ningún lado. Tres formas de mostrarlo.
+  Los números son de ejemplo. Ábrelo en el celular para ver cómo queda.
+</p>
+
+<!-- ══════════ A ══════════ -->
+<div class="variante">
+  <h2><span class="tag">Opción A</span> Un KPI más</h2>
+  <p>Junto a los dos que ya tienes, uno nuevo con el total cobrado en toda la vida de la propiedad. Lo mínimo.</p>
+
+  <div class="pantalla">
+    <div class="pantalla-tit">Local JUAREZ 960m2</div>
+    <div class="pantalla-sub">🏠 Propiedad · Franco Propiedades</div>
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Renta/mes</div><div class="kpi-val">$26,250</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Total pagado</div><div class="kpi-val">$26,250</div>
+        <div class="kpi-sub">inquilino actual</div></div>
+    </div>
+    <div class="kpi-row" style="grid-template-columns:1fr">
+      <div class="kpi-card teal"><div class="kpi-label">Histórico de la propiedad</div>
+        <div class="kpi-val">$631,050</div>
+        <div class="kpi-sub">3 inquilinos · desde sep-2024</div></div>
+    </div>
+  </div>
+
+  <div class="nota">
+    <b>A favor:</b> es el cambio más chico y ves el número de un vistazo.<br>
+    <b>En contra:</b> solo te da el total. No sabes quién pagó qué ni cuándo.
+  </div>
+</div>
+
+<div class="divisor"></div>
+
+<!-- ══════════ B ══════════ -->
+<div class="variante">
+  <h2><span class="tag">Opción B</span> Historial completo de inquilinos</h2>
+  <p>Una sección nueva abajo del detalle: cada inquilino que ha pasado por la propiedad, lo que pagó, y el total de vida. Es la que responde <i>"¿cuánto me ha dado esta propiedad?"</i>.</p>
+
+  <div class="pantalla">
+    <div class="pantalla-tit">Local JUAREZ 960m2</div>
+    <div class="pantalla-sub">🏠 Propiedad · Franco Propiedades</div>
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Renta/mes</div><div class="kpi-val">$26,250</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Total pagado</div><div class="kpi-val">$26,250</div>
+        <div class="kpi-sub">inquilino actual</div></div>
+    </div>
+
+    <div class="sec-tit">📋 Historial de la propiedad</div>
+
+    <div class="total-vida">
+      <div>
+        <div class="lbl">Total cobrado en toda su historia</div>
+        <div class="sub">3 inquilinos · 14 pagos · desde sep-2024</div>
+      </div>
+      <div class="val">$631,050</div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div class="inq actual">
+        <div class="inq-nom">GRUPO FERRETERO DEL NORTE <span class="badge hoy">Actual</span></div>
+        <div class="inq-per">01/09/2026 → hoy · 1 mes</div>
+        <div class="inq-cifras">
+          <div class="inq-cif">Renta<b>$26,250</b></div>
+          <div class="inq-cif">Cobrado<b>$26,250</b></div>
+          <div class="inq-cif">Pagos<b>1</b></div>
+        </div>
+      </div>
+
+      <div class="inq">
+        <div class="inq-nom">SILVIA LOERA RUBIO <span class="badge ex">Anterior</span></div>
+        <div class="inq-per">01/09/2024 → 13/05/2026 · 1 año 8 meses · Fin de contrato</div>
+        <div class="inq-cifras">
+          <div class="inq-cif">Renta<b>$25,200</b></div>
+          <div class="inq-cif">Cobrado<b>$604,800</b></div>
+          <div class="inq-cif">Pagos<b>4</b></div>
+        </div>
+      </div>
+
+      <div class="inq">
+        <div class="inq-nom">COMERCIAL DEL BAJÍO <span class="badge ex">Anterior</span></div>
+        <div class="inq-per">15/03/2023 → 30/08/2024 · 1 año 5 meses · Deja el local</div>
+        <div class="inq-cifras">
+          <div class="inq-cif">Renta<b>$22,000</b></div>
+          <div class="inq-cif">Cobrado<b>$0</b></div>
+          <div class="inq-cif">Pagos<b>0</b></div>
+        </div>
+        <div class="mini">⚠️ Sin pagos registrados — anterior a que usaras la app</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nota">
+    <b>A favor:</b> ves la vida completa del inmueble: quién lo ocupó, cuánto tiempo, cuánto dejó cada uno.
+    Y sigue ahí aunque borres al inquilino de tu lista de clientes.<br>
+    <b>En contra:</b> es la que más trabajo lleva y alarga la pantalla de la propiedad.
+  </div>
+</div>
+
+<div class="divisor"></div>
+
+<!-- ══════════ C ══════════ -->
+<div class="variante">
+  <h2><span class="tag">Opción C</span> Solo el total, plegable</h2>
+  <p>El total de vida siempre visible, y el desglose por inquilino escondido hasta que lo toques. Punto medio: no alarga la pantalla pero el detalle está a un toque.</p>
+
+  <div class="pantalla">
+    <div class="pantalla-tit">Local JUAREZ 960m2</div>
+    <div class="pantalla-sub">🏠 Propiedad · Franco Propiedades</div>
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Renta/mes</div><div class="kpi-val">$26,250</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Total pagado</div><div class="kpi-val">$26,250</div>
+        <div class="kpi-sub">inquilino actual</div></div>
+    </div>
+
+    <div style="margin-top:14px">
+      <div class="total-vida">
+        <div>
+          <div class="lbl">Total cobrado en toda su historia</div>
+          <div class="sub">3 inquilinos · 14 pagos</div>
+        </div>
+        <div class="val">$631,050</div>
+      </div>
+      <div style="text-align:center;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--accent);cursor:pointer">
+        VER INQUILINOS ANTERIORES ▼
+      </div>
+    </div>
+  </div>
+
+  <div class="nota">
+    <b>A favor:</b> el número que te importa siempre a la vista, sin alargar la pantalla.<br>
+    <b>En contra:</b> un toque más para ver el detalle.
+  </div>
+</div>
+
+<div class="divisor"></div>
+
+<div class="nota" style="border-left-color:var(--warning)">
+  <b>Lo mismo en las tres opciones:</b> el dato sale de lo que ya está guardado en la propiedad, así que
+  <b>no depende del cliente</b>. Puedes borrar inquilinos viejos de tu lista y el historial de la propiedad
+  se queda intacto.<br><br>
+  <b>Y una advertencia honesta:</b> las propiedades que tuvieron inquilinos antes de que usaras la app
+  aparecerán con $0, porque esos pagos nunca se capturaron. El historial arranca desde donde arrancó tu registro.
+</div>
+
+</body>
+</html>
