@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v103 · 26-sep-2026';
+var APP_VERSION = 'v104 · 26-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -16121,14 +16121,50 @@ function _renderDetalleHistorialInquilinos(renta) {
   var historial = renta.historialInquilinos || [];
   var clienteActual = renta.clienteId ? (_getCliMap()[renta.clienteId] || null) : null;
   var filas = '';
+  // HISTORIAL-PROPIEDAD (2026-09): esta sección ya listaba quién había ocupado la propiedad, pero
+  // no cuánto dejó cada uno ni el total de su vida. Ese dato ya estaba guardado —los pagos del
+  // inquilino actual en renta.abonos y los de los anteriores en historialInquilinos[].totalCobrado—
+  // pero no se mostraba en ningún lado: al dar de baja a alguien, lo que había cobrado la propiedad
+  // desaparecía de la vista aunque siguiera almacenado.
+  // Se calcula sobre la propiedad y NO sobre el cliente a propósito: Franco borra los inquilinos
+  // cuando dejan de rentarle, y eliminarCliente no toca historialInquilinos, así que el histórico
+  // de la propiedad sobrevive a ese borrado.
+  var _cobradoActual = (renta.abonos || []).reduce(function(s, a) { return s + (Number(a.monto) || 0); }, 0);
+  var _pagosActual = (renta.abonos || []).length;
+  var _cobradoPrevio = 0, _pagosPrevio = 0;
+  historial.forEach(function(h) {
+    _cobradoPrevio += Number(h.totalCobrado) || 0;
+    _pagosPrevio += Number(h.numPagos) || 0;
+  });
+  var _totalVida = _cobradoActual + _cobradoPrevio;
+  var _pagosVida = _pagosActual + _pagosPrevio;
+  // Cifras de una fila: "Cobrado $X · N pagos", o el aviso de que no hay pagos capturados.
+  function _cifrasFila(monto, pagos) {
+    if (!pagos) return '<div style="font-size:11px;color:var(--text3);margin-top:3px">Sin pagos registrados</div>';
+    return '<div style="font-size:11px;color:var(--text2);margin-top:3px">'
+      + '<b style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;color:var(--accent)">' + fmt(monto) + '</b>'
+      + ' <span style="color:var(--text3)">· ' + pagos + (pagos === 1 ? ' pago' : ' pagos') + '</span></div>';
+  }
   if (clienteActual) {
     var ini = renta.inicio ? fmtDate(renta.inicio) : '—';
     // FIX HIST-CLICKEABLE: inquilino actual clickeable
     filas += '<div data-action="verDetalleCliente" data-arg="' + clienteActual.id + '" data-stop="1" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .15s" onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'\'">'
       + '<div style="width:34px;height:34px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--accent);flex-shrink:0">' + escHtml((clienteActual.nombre||'?')[0].toUpperCase()) + '</div>'
       + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text)">' + escHtml(clienteActual.nombre) + ' <span style="font-size:10px;background:var(--accent-light);color:var(--accent);padding:1px 7px;border-radius:10px;font-weight:700">Actual</span></div>'
-      + '<div style="font-size:11px;color:var(--text3);margin-top:1px">Desde ' + ini + '</div></div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:1px">Desde ' + ini + '</div>'
+      + _cifrasFila(_cobradoActual, _pagosActual) + '</div>'
       + '<div style="color:var(--text3);font-size:14px;flex-shrink:0">›</div></div>';
+  }
+  // HISTORIAL-PROPIEDAD (2026-09): si la propiedad quedó sin inquilino pero conserva pagos (baja
+  // reciente, o un cliente eliminado que solo desvincula), esos pagos entran en el total de arriba.
+  // Sin esta fila el recuadro sumaría más que las filas de abajo y parecería un error de cuentas.
+  // Caso real: "Local JUAREZ Todo Completo 960m2 FISCAL", con $26,250 cobrados y sin cliente.
+  if (!clienteActual && _cobradoActual > 0) {
+    filas += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--border)">'
+      + '<div style="width:34px;height:34px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🏠</div>'
+      + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text2)">Sin inquilino asignado</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:1px">Pagos que siguen en la propiedad</div>'
+      + _cifrasFila(_cobradoActual, _pagosActual) + '</div></div>';
   }
   historial.slice().reverse().slice(0,3).forEach(function(h) {
     var nombre = h.nombre || (h.clienteId ? getClienteNombre(h.clienteId) : '—');
@@ -16142,14 +16178,29 @@ function _renderDetalleHistorialInquilinos(renta) {
     filas += '<div' + _onclickH + _hoverH + ' style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--border);' + _cursorH + '">'
       + '<div style="width:34px;height:34px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--text3);flex-shrink:0">' + escHtml((nombre||'?')[0].toUpperCase()) + '</div>'
       + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text2)">' + escHtml(nombre) + '</div>'
-      + '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + (h.inicio ? fmtDate(h.inicio) : '—') + ' → ' + (h.fin ? fmtDate(h.fin) : '—') + '</div></div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + (h.inicio ? fmtDate(h.inicio) : '—') + ' → ' + (h.fin ? fmtDate(h.fin) : '—') + '</div>'
+      + _cifrasFila(Number(h.totalCobrado) || 0, Number(h.numPagos) || 0) + '</div>'
       + _chevH + '</div>';
   });
   if (!filas) return '';
   var total = historial.length + (clienteActual ? 1 : 0);
   var verMas = total > 4 ? '<button data-action="verHistorialInquilinos" data-arg="' + renta.id + '" style="width:100%;padding:10px;font-size:12px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;text-align:center">Ver historial completo (' + total + ') →</button>' : '';
+  // HISTORIAL-PROPIEDAD (2026-09): cabecera con el total cobrado en toda la vida de la propiedad.
+  // Solo se pinta si hay algo cobrado — una propiedad sin pagos capturados no gana nada con un
+  // recuadro en $0, y las que tuvieron inquilinos antes de que existiera la app estarían así.
+  var _totalHtml = '';
+  if (_totalVida > 0) {
+    _totalHtml = '<div style="background:linear-gradient(180deg,#f2f8f4,#eaf4ee);border:1px solid rgba(45,106,79,.25);'
+      + 'border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+      + '<div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);font-weight:700">Cobrado en toda su historia</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + total + (total === 1 ? ' inquilino' : ' inquilinos')
+      + ' · ' + _pagosVida + (_pagosVida === 1 ? ' pago' : ' pagos') + '</div></div>'
+      + '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:23px;font-weight:800;color:var(--accent)">'
+      + fmt(_totalVida) + '</div></div>';
+  }
   return '<div style="margin-top:24px;margin-bottom:8px">'
     + '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:8px;margin-bottom:10px">👥 Historial de inquilinos<span style="flex:1;height:1px;background:var(--border)"></span></div>'
+    + _totalHtml
     + '<div style="background:var(--surface);border:1px solid var(--border);border-radius:13px;overflow:hidden">'
     + filas + verMas + '</div></div>';
 }
