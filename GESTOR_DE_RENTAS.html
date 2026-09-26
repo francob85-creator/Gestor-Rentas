@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v100 · 26-sep-2026';
+var APP_VERSION = 'v101 · 26-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -25738,7 +25738,13 @@ function descargarWordContrato() {
   var repLegal     = (cli && cli.facturacion && cli.facturacion.repLegal) ? cli.facturacion.repLegal : null;
   var usoInmueble  = (cli && cli.usoInmueble) ? cli.usoInmueble : null;
   var prop         = renta.nombre || null;
-  var montoNum     = Number(renta.monto) || 0;
+  // FIX MONTO-VIGENTE (2026-09): el contrato salía de r.monto crudo, que tras un incremento
+  // puede quedar desfasado respecto a historialMonto — o sea podía no ser ni la renta pactada al
+  // inicio ni la que se cobra hoy, sino un valor intermedio sin sentido. Franco decidió (26-sep)
+  // que el contrato lleve la renta VIGENTE, porque lo genera para firmar renovaciones y
+  // contratos nuevos. De aquí salen la cifra, el importe con letra y, si el cliente no tiene
+  // depósito propio, el monto del depósito en garantía.
+  var montoNum     = _montoVigenteHoy(renta);
   var monto        = montoNum ? fmt(montoNum) : null;
   var montoLetras  = montoNum ? _numToLetras(montoNum) : null;
   var inicio       = renta.inicio ? fmtDate(renta.inicio) : null;
