@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v102 · 26-sep-2026';
+var APP_VERSION = 'v103 · 26-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4431,6 +4431,26 @@ async function _asegurarAbonosCompletosParaBaja(renta, _ctx) {
     showToast('🛟 Se recuperaron ' + (_chk.enServidor - _chk.enMemoria) + ' pago(s) de la nube antes de archivar');
   }
   renta.abonos = _chk.abonos;
+  return true;
+}
+
+// FIX BAJA-SIN-ARCHIVAR (2026-09): segunda mitad de la guardia. _asegurarAbonosCompletosParaBaja
+// se ocupa de que la memoria tenga todos los pagos; esta comprueba que registrarSalidaInquilino
+// de verdad haya dejado la ficha archivada ANTES de que el flujo borre los abonos.
+// Hacía falta porque registrarSalidaInquilino tiene dos salidas tempranas silenciosas —cliente no
+// encontrado en state.clientes, y el dedup de entrada ya existente— y quien la llama nunca
+// comprobaba el resultado: seguía y borraba igual. Caso real detectado comparando dos respaldos:
+// la propiedad TAMESIS DEPA F pasó de un inquilino a otro y el saliente NO quedó en
+// historialInquilinos, mientras sus 5 pagos ($72,500) desaparecían sin dejar lápida.
+// Devuelve true si hay ficha para ese cliente (recién creada o preexistente por el dedup).
+function _seArchivoElInquilino(renta, clienteIdSaliente, _ctx) {
+  var hay = (renta.historialInquilinos || []).some(function(h) { return h.clienteId === clienteIdSaliente; });
+  if (!hay) {
+    console.error('[' + (_ctx || 'Baja') + '] registrarSalidaInquilino no dejó ficha para ' + clienteIdSaliente + ' — operación abortada, no se borra nada.');
+    showAlert('No se pudo archivar el historial de este inquilino.\n\n' +
+              'La operación se canceló y NO se borró ningún pago. Recarga la app e inténtalo de nuevo.', 'error');
+    return false;
+  }
   return true;
 }
 
@@ -16803,7 +16823,9 @@ async function confirmarBajaInquilino() {
     // historial sin haber podido verificarlo. La propiedad queda intacta y se puede reintentar.
     if (!await _asegurarAbonosCompletosParaBaja(renta, 'BajaInquilino')) return;
     try { var _ua=JSON.parse(localStorage.getItem('gr_unassigned')||'{}'); _ua[renta.id]=Date.now(); localStorage.setItem('gr_unassigned',JSON.stringify(_ua)); } catch(e) {}
-    registrarSalidaInquilino(renta, renta.clienteId, motivo);
+    var _cidSalienteB = renta.clienteId;
+    registrarSalidaInquilino(renta, _cidSalienteB, motivo);
+    if (!_seArchivoElInquilino(renta, _cidSalienteB, 'BajaInquilino')) return;
     // Clear tenant-specific data — all preserved in historialInquilinos
     // FIX BAJA-RESURRECT: marcar IDs y UUIDs de abonos borrados ANTES de eliminarlos
     // para que el reducer _applyAbonosSnapshot NO los reviva si llega un snapshot stale.
@@ -22895,6 +22917,10 @@ async function _confirmarCambioInquilino() {
   // propiedad y su inquilino actual quedan intactos y se puede reintentar.
   if (!await _asegurarAbonosCompletosParaBaja(r, 'CambioInquilino')) { closeModal('modalMotivoSalida'); return; }
   registrarSalidaInquilino(r, pending.prevClienteId, motivo);
+  // FIX BAJA-SIN-ARCHIVAR (2026-09): este es el camino por el que se perdieron los 5 pagos de
+  // TAMESIS DEPA F — el inquilino saliente nunca llegó a historialInquilinos y aun así se
+  // borraron sus abonos. Si no quedó ficha, se aborta el cambio sin tocar nada.
+  if (!_seArchivoElInquilino(r, pending.prevClienteId, 'CambioInquilino')) { closeModal('modalMotivoSalida'); return; }
   if (r.deposito && r.deposito.devuelto) r.deposito = null;
   r.deposito = null;
   // FIX BAJA-RESURRECT V2: marcar timestamp de baja + AWAIT del delete para evitar
