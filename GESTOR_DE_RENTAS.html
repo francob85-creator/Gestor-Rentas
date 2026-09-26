@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v101 · 26-sep-2026';
+var APP_VERSION = 'v102 · 26-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4384,6 +4384,56 @@ async function _fbDeleteAbono(abonoId) {
 // en la renta ANTES de eliminar de Firestore. Esto previene que abonos facturados
 // resuciten vía la lógica de "heal" del reducer (línea ~4590) cuando llega un snapshot
 // stale de otro dispositivo que aún los tenía en memoria.
+// FIX BAJA-HISTORIAL (2026-09): red de seguridad para la baja de inquilinos.
+// registrarSalidaInquilino archiva en historialInquilinos LO QUE HAY EN MEMORIA y acto seguido
+// _fbDeleteAllAbonosForRenta borra del servidor TODOS los abonos de esa propiedad. El diseño da
+// por hecho que la memoria está completa; si no lo está, se archiva de menos y el original ya no
+// existe para notarlo. Caso real: un inquilino de casi 5 años quedó con "Total pagado $0" y cero
+// pagos en su historial, mientras que otras bajas sí conservaron el suyo — compatible con que el
+// listener de abonos estuviera mudo en ese momento (ver FIX LP-NUNCA-ACTIVO, que estuvo activo
+// meses en iOS).
+// Esta función lee los abonos de la propiedad DESDE EL SERVIDOR y devuelve la unión con los de
+// memoria. La memoria manda cuando el id existe en ambos, porque ahí viven los binarios que
+// _stripAbonoForSync quita antes de subir (comprobantes, XML). Si el servidor no se puede leer,
+// devuelve ok:false y quien llama DEBE abortar la baja: es preferible no dar de baja a borrar un
+// historial que no pudimos verificar.
+async function _leerAbonosDeRentaDesdeServidor(renta) {
+  var col = tenantAbonosCol();
+  if (!col || !_fbAuth || !renta || !renta.id) return { ok: false, motivo: 'sin sesión de nube' };
+  try {
+    var snap = await col.where('rentaId', '==', renta.id).get({ source: 'server' });
+    var srv = [];
+    snap.forEach(function(d) { var x = d.data(); if (x && x.id) srv.push(x); });
+    var union = [], vistos = {};
+    (renta.abonos || []).forEach(function(a) { if (a && a.id) { union.push(a); vistos[a.id] = true; } });
+    srv.forEach(function(a) { if (!vistos[a.id]) union.push(a); });
+    return { ok: true, abonos: union, enServidor: srv.length, enMemoria: (renta.abonos || []).length };
+  } catch(e) {
+    return { ok: false, motivo: (e && e.message) ? e.message : 'error de lectura' };
+  }
+}
+
+// FIX BAJA-HISTORIAL (2026-09): guardia común a todos los caminos que archivan un inquilino y
+// después borran sus pagos. Devuelve true si se puede continuar. Si no se pudo verificar contra
+// el servidor devuelve false, y quien llama DEBE abortar: es preferible no dar la baja que
+// borrar un historial sin haber comprobado que la copia archivada está completa.
+async function _asegurarAbonosCompletosParaBaja(renta, _ctx) {
+  if (!state._abonosMigratedV2) return true; // pre-migración: los abonos viven en el doc, sin subcolección que leer
+  var _chk = await _leerAbonosDeRentaDesdeServidor(renta);
+  if (!_chk.ok) {
+    showAlert('No se pudo verificar el historial de pagos en la nube (' + _chk.motivo + ').\n\n' +
+              'La operación se canceló para no perder pagos. Revisa tu conexión y vuelve a intentarlo.', 'error');
+    return false;
+  }
+  if (_chk.enServidor > _chk.enMemoria) {
+    console.warn('[' + (_ctx || 'Baja') + '] La nube tenía ' + _chk.enServidor + ' pagos y la memoria ' +
+                 _chk.enMemoria + ' — se archivan los ' + _chk.abonos.length + ' de la unión.');
+    showToast('🛟 Se recuperaron ' + (_chk.enServidor - _chk.enMemoria) + ' pago(s) de la nube antes de archivar');
+  }
+  renta.abonos = _chk.abonos;
+  return true;
+}
+
 async function _fbDeleteAllAbonosForRenta(rentaId) {
   var col = tenantAbonosCol();
   if (!col || !rentaId || !_fbAuth) return;
@@ -16744,6 +16794,14 @@ async function confirmarBajaInquilino() {
   closeModal('modalBajaInquilino');
   var hoyISO = new Date().toISOString().slice(0,10);
   if (tipo === 'inmediata' || fecha <= hoyISO) {
+    // FIX BAJA-HISTORIAL (2026-09): antes de archivar y borrar, verificar contra el SERVIDOR que
+    // la memoria tenga todos los pagos. La baja archiva lo que hay en memoria y después borra los
+    // originales de la nube: si la app estaba mal sincronizada, se archivaba de menos y ya no
+    // quedaba con qué compararlo. Le pasó a un inquilino de casi 5 años, que quedó con el
+    // historial en cero mientras otras bajas sí conservaron el suyo.
+    // Si el servidor no se puede leer, se ABORTA la baja: es preferible no darla que borrar un
+    // historial sin haber podido verificarlo. La propiedad queda intacta y se puede reintentar.
+    if (!await _asegurarAbonosCompletosParaBaja(renta, 'BajaInquilino')) return;
     try { var _ua=JSON.parse(localStorage.getItem('gr_unassigned')||'{}'); _ua[renta.id]=Date.now(); localStorage.setItem('gr_unassigned',JSON.stringify(_ua)); } catch(e) {}
     registrarSalidaInquilino(renta, renta.clienteId, motivo);
     // Clear tenant-specific data — all preserved in historialInquilinos
@@ -22832,6 +22890,10 @@ async function _confirmarCambioInquilino() {
   var motivo = selEl ? selEl.value : 'Fin de contrato';
   if (motivo === 'otro') motivo = (otroEl && otroEl.value.trim()) || 'Fin de contrato';
   var r = pending.r;
+  // FIX BAJA-HISTORIAL (2026-09): este camino archiva y borra igual que la baja, así que necesita
+  // la misma guardia. Si no se puede verificar contra el servidor se aborta el cambio: la
+  // propiedad y su inquilino actual quedan intactos y se puede reintentar.
+  if (!await _asegurarAbonosCompletosParaBaja(r, 'CambioInquilino')) { closeModal('modalMotivoSalida'); return; }
   registrarSalidaInquilino(r, pending.prevClienteId, motivo);
   if (r.deposito && r.deposito.devuelto) r.deposito = null;
   r.deposito = null;
