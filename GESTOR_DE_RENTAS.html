@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v99 · 25-sep-2026';
+var APP_VERSION = 'v100 · 26-sep-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12206,6 +12206,19 @@ function _montoEfectivoEnMes(renta, mesStr) {
   return montoBase;
 }
 
+// FIX MONTO-VIGENTE (2026-09): atajo para "la renta que aplica HOY".
+// La causa de fondo de toda la familia de desajustes entre pantallas (FIX POTENCIAL-MODAL-
+// MISMATCH 2026-06, FIX DESGLOSE-TIPO-MONTO, FIX FP-MODAL-MONTO, FIX REPORTE-*-MONTO) no fueron
+// bugs independientes: es que la regla "monto que aplica este mes" estaba escrita a mano en cada
+// pantalla, y cada copia se corrigió por separado mientras las demás se quedaban con r.monto
+// crudo. Los totales de Propiedades, Clientes y el Dashboard mostraban tres cifras distintas del
+// mismo grupo. Con un solo punto de entrada dejan de poder divergir.
+// Para un mes concreto (reportes de meses pasados) se sigue usando _montoEfectivoEnMes directo.
+function _montoVigenteHoy(renta) {
+  var _hMV = new Date();
+  return _montoEfectivoEnMes(renta, _hMV.getFullYear() + '-' + String(_hMV.getMonth() + 1).padStart(2, '0'));
+}
+
 function getStatusRenta(renta) {
   if (!renta || !renta.id) return { estado: 'sin-rentar', saldo: 0, saldoVencido: 0,
     totalPagado: 0, totalEsperado: 0, pagadoMes: 0, pagadoMesDebido: 0, mesDebido: '',
@@ -14247,7 +14260,9 @@ function renderRentas() {
   tiposOrdenados.forEach(function(tipo) {
     var rents = grupos[tipo];
     var cfg = tipoConfig(tipo);
-    var totalMonto = rents.reduce(function(s,r) { return s + Number(r.monto||0); }, 0);
+    // FIX MONTO-VIGENTE (2026-09): el encabezado del grupo en Propiedades sumaba r.monto crudo,
+    // así que el mismo grupo mostraba $377,795 aquí y $378,895 en el Dashboard.
+    var totalMonto = rents.reduce(function(s,r) { return s + _montoVigenteHoy(r); }, 0);
     var atrasadasCnt = rents.filter(function(r) { var _st=getStatusRenta(r); return _st&&_st.estado === 'atrasado'; }).length;
 
     // Build header
@@ -14538,7 +14553,7 @@ function renderClientes() {
     clis.forEach(function(c) {
       _montoCliPorTipo[c.id] = state.rentas
         .filter(function(r) { return r.clienteId === c.id && (r.tipo||'Otro') === tipo; })
-        .reduce(function(s, r) { return s + (Number(r.monto)||0); }, 0);
+        .reduce(function(s, r) { return s + _montoVigenteHoy(r); }, 0); // FIX MONTO-VIGENTE
     });
     clis.sort(function(a, b) {
       var diff = (_montoCliPorTipo[b.id]||0) - (_montoCliPorTipo[a.id]||0);
@@ -14555,7 +14570,9 @@ function renderClientes() {
       ? {icon:'👤', color:'#6b7280', bg:'#f3f4f6'}
       : tipoConfig(tipo);
     var labelTipo = tipo === '__sin_propiedad__' ? 'Sin propiedad asignada' : tipo;
-    var totalMensual = clis.reduce(function(s,c){ return s+_getRentasPorCliente(c.id).filter(function(r){return (r.tipo||'Otro')===tipo;}).reduce(function(ss,r){return ss+Number(r.monto||0);},0); },0);
+    // FIX MONTO-VIGENTE (2026-09): mismo desajuste que en Propiedades — el encabezado del grupo
+    // en Clientes sumaba r.monto crudo y no cuadraba con el Dashboard.
+    var totalMensual = clis.reduce(function(s,c){ return s+_getRentasPorCliente(c.id).filter(function(r){return (r.tipo||'Otro')===tipo;}).reduce(function(ss,r){return ss+_montoVigenteHoy(r);},0); },0);
 
     var _clienteCardsHtml = '';
     if (clientesView === 'grid') {
@@ -14656,7 +14673,10 @@ function renderClienteListCard(c) {
   var saldoVencidoTotal = rentas.reduce(function(s,r) { return s + (_stMapC[r.id]?(_stMapC[r.id].saldoVencido||0):0); }, 0);
   var saldoFavTotal = rentas.reduce(function(s,r) { return s + (_stMapC[r.id]?(_stMapC[r.id].saldoFavor||0):0); }, 0);
   var mesesFavTotal = rentas.reduce(function(s,r) { return s + (_stMapC[r.id]?(_stMapC[r.id].mesesAdelanto||0):0); }, 0);
-  var totalMensual  = rentas.reduce(function(s,r) { return s + Number(r.monto||0); }, 0);
+  // FIX MONTO-VIGENTE (2026-09): las otras cifras de esta tarjeta (saldo vencido, saldo a favor)
+  // salen de getStatusRenta, que usa el monto efectivo. La renta salía de r.monto crudo, así que
+  // la tarjeta del cliente mezclaba las dos reglas.
+  var totalMensual  = rentas.reduce(function(s,r) { return s + _montoVigenteHoy(r); }, 0);
   var tieneParcial  = rentas.some(function(r) { return _stMapC[r.id] && _stMapC[r.id].estado === 'parcial'; });
   var _saldoVencido = Math.round(saldoVencidoTotal * 100) / 100;
   var _saldo = Math.round(saldoTotal * 100) / 100;
@@ -15175,12 +15195,12 @@ function _verClientesEnModal(estado) {
       return 0;
     };
     if (!prev) {
-      clienteEstados[r.clienteId] = { estado: st.estado, saldoFavor: st.saldoFavor || 0, saldoVencido: st.saldoVencido || 0, monto: Number(r.monto) || 0 };
+      clienteEstados[r.clienteId] = { estado: st.estado, saldoFavor: st.saldoFavor || 0, saldoVencido: st.saldoVencido || 0, monto: _montoVigenteHoy(r) }; // FIX MONTO-VIGENTE
     } else {
       if (rank(st.estado) > rank(prev.estado)) prev.estado = st.estado;
       prev.saldoFavor += (st.saldoFavor || 0);
       prev.saldoVencido += (st.saldoVencido || 0);
-      prev.monto += (Number(r.monto) || 0);
+      prev.monto += _montoVigenteHoy(r); // FIX MONTO-VIGENTE
     }
   });
   var clientes = state.clientes || [];
@@ -15554,7 +15574,10 @@ function renderDetalleCliente(id) {
   var totalSaldo   = rentas.reduce(function(s,r) { return s + (_stMapD[r.id]?_stMapD[r.id].saldo:0); }, 0);
   // FIX SALDO-NETO: total saldo en subtotal (para mostrar formato dual "subtotal / neto" en KPI)
   var totalSaldoSub = rentas.reduce(function(s,r) { return s + (_stMapD[r.id]?(_stMapD[r.id].saldoSub||0):0); }, 0);
-  var totalMensual = rentas.reduce(function(s,r) { return s + Number(r.monto||0); }, 0) || (_histFound ? _histMensual : 0);
+  // FIX MONTO-VIGENTE (2026-09): el KPI "Renta/mes" del detalle del cliente sumaba r.monto crudo
+  // mientras que el saldo de al lado sale de getStatusRenta. Se conserva el fallback al histórico
+  // para clientes sin propiedades activas.
+  var totalMensual = rentas.reduce(function(s,r) { return s + _montoVigenteHoy(r); }, 0) || (_histFound ? _histMensual : 0);
   // FIX RENTA-FACTURABLE: si el cliente tiene factura, calcular también el total neto
   // para mostrarlo junto al subtotal en el KPI Renta/mes (formato "subtotal / neto").
   // FIX FACTURACION-POR-PROPIEDAD: cada propiedad puede tener su propio facturacion.neto
