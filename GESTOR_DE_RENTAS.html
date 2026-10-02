@@ -3559,7 +3559,15 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
               <label>Concepto personalizado</label>
               <textarea id="c-fac-concepto" rows="2" style="width:100%;font-size:12px;resize:vertical" placeholder="Se generará automáticamente..."></textarea>
             </div>
-            <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Variables disponibles: <code>{propiedad}</code> <code>{mes}</code> <code>{anio}</code> <code>{periodo}</code></div>
+            <!-- FIX PREVIEW-CONCEPTO (2026-10): aquí solo se documentaban 4 de las 7 variables que
+                 resolverConcepto sabe expandir. Faltaban {dia}, {mes±N} y {anio±N}, que llevan
+                 tiempo funcionando al timbrar sin que nadie supiera que existían. -->
+            <div style="font-size:10px;color:var(--text3);margin-bottom:6px;line-height:1.7">Variables disponibles:
+              <code>{propiedad}</code> <code>{dia}</code> <code>{mes}</code> <code>{anio}</code> <code>{periodo}</code>
+              <code>{mes+1}</code> <code>{anio+1}</code>
+              <br><span style="color:var(--text3)"><b>{dia}</b> = día de cobro · <b>{periodo}</b> = «del 20 de Octubre al 19 de Noviembre» ·
+              <b>{mes+1}</b> y <b>{anio+1}</b> = el mes y el año siguientes (también <code>{mes-1}</code>, <code>{mes+2}</code>…)</span>
+              <br><span style="color:var(--text2)">Ejemplo: <code>Renta del {dia} de {mes} {anio} al 19 de {mes+1} {anio+1} de {propiedad}</code></span></div>
             <button type="button" class="btn btn-ghost" style="font-size:11px;padding:4px 10px" data-action="generarConceptoDefault">🔄 Regenerar concepto por defecto</button>
             <div id="c-fac-concepto-preview" style="font-size:11px;color:var(--accent);margin-top:6px;font-style:italic"></div>
           </div>
@@ -3886,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v105 · 02-oct-2026';
+var APP_VERSION = 'v106 · 02-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -18324,34 +18332,28 @@ function generarConceptoDefault() {
   generarConceptoPreview();
 }
 
+// FIX PREVIEW-CONCEPTO (2026-10): este preview reimplementaba a mano la expansión de variables y
+// se había quedado atrás de resolverConcepto, que es la que se usa de verdad al timbrar. Soportaba
+// 4 variables de las 7 reales: faltaban {dia}, {mes+N} y {anio+N}, así que quien las usaba las veía
+// en crudo y creía que no funcionaban — cuando en la factura salían perfectas. Encima interpretaba
+// {periodo} distinto según el selector de tipo de período, cosa que el timbrado no hace.
+// Ahora delega en resolverConcepto: una sola regla, imposible que vuelvan a divergir. El preview
+// muestra exactamente lo que va a decir la factura, que es su único trabajo.
+// NO se toca resolverConcepto ni nada del timbrado: solo cambia de dónde saca el preview su texto.
 function generarConceptoPreview() {
   var concepto = document.getElementById('c-fac-concepto').value;
-  if (!concepto) { document.getElementById('c-fac-concepto-preview').textContent = ''; return; }
-  var now = new Date();
-  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var _prevEl = document.getElementById('c-fac-concepto-preview');
+  if (!_prevEl) return;
+  if (!concepto) { _prevEl.textContent = ''; return; }
   var propSel = document.getElementById('c-propiedad');
-  var propNombre = 'Mi Propiedad';
-  var diaCobro = 1;
-  if (propSel && propSel.value) {
-    var r = state.rentas.find(function(r2){ return r2.id === propSel.value; });
-    if (r) { propNombre = r.nombre; diaCobro = parseInt(r.dia) || 1; }
-  }
-  var periodoTipo = document.getElementById('c-fac-periodo-tipo').value;
-  var periodoStr;
-  if (periodoTipo === 'contrato') {
-    var diaFin = diaCobro - 1; if (diaFin < 1) diaFin = 28;
-    var mesSig = now.getMonth() + 1; var anioSig = now.getFullYear();
-    if (mesSig > 11) { mesSig = 0; anioSig++; }
-    periodoStr = 'del ' + diaCobro + ' de ' + meses[now.getMonth()] + ' al ' + diaFin + ' de ' + meses[mesSig];
-  } else {
-    periodoStr = meses[now.getMonth()];
-  }
-  var preview = concepto
-    .replace(/\{propiedad\}/g, propNombre)
-    .replace(/\{mes\}/g, meses[now.getMonth()])
-    .replace(/\{anio\}/g, String(now.getFullYear()))
-    .replace(/\{periodo\}/g, periodoStr);
-  document.getElementById('c-fac-concepto-preview').textContent = '📄 Preview: ' + preview;
+  var _rentaIdPrev = (propSel && propSel.value) ? propSel.value : '';
+  var _now = new Date();
+  var _mesKeyPrev = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0');
+  var preview = resolverConcepto(concepto, _rentaIdPrev, _mesKeyPrev);
+  // Sin propiedad seleccionada, resolverConcepto cae a día 1 y "Propiedad": avisarlo en vez de
+  // dejar que el usuario crea que así saldrá su factura.
+  var _aviso = _rentaIdPrev ? '' : '  ⚠️ (selecciona una propiedad arriba para ver el día de cobro real)';
+  _prevEl.textContent = '📄 Preview: ' + preview + _aviso;
 }
 
 function resolverConcepto(plantilla, rentaId, mesKey) {
