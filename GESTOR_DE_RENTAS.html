@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v106 · 02-oct-2026';
+var APP_VERSION = 'v107 · 02-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -18345,14 +18345,27 @@ function generarConceptoPreview() {
   var _prevEl = document.getElementById('c-fac-concepto-preview');
   if (!_prevEl) return;
   if (!concepto) { _prevEl.textContent = ''; return; }
-  var propSel = document.getElementById('c-propiedad');
-  var _rentaIdPrev = (propSel && propSel.value) ? propSel.value : '';
+  // FIX PREVIEW-PROPIEDAD (2026-10): este preview leía un selector con id "c-propiedad" que NO
+  // EXISTE en la app — nunca existió. getElementById devolvía null, la renta quedaba vacía y
+  // resolverConcepto caía a su valor por defecto de día 1, así que el preview mostraba "del 1 de
+  // Octubre al 28 de Noviembre" aunque la propiedad cobrara el 20. El aviso que puse en v106 para
+  // avisar de ese caso era peor: como el selector no existe, era imposible de satisfacer y salía
+  // siempre, incluso cuando el texto era correcto.
+  // El concepto se configura dentro de la ficha del CLIENTE, así que la referencia correcta es
+  // una propiedad suya: se toma la primera que tenga asignada. Si el cliente aún no tiene ninguna
+  // (alta nueva), se dice con todas sus letras de dónde sale el día, en vez de fingir precisión.
+  var _rentasPrev = (typeof editandoClienteId !== 'undefined' && editandoClienteId)
+    ? _getRentasPorCliente(editandoClienteId) : [];
+  var _rentaRefPrev = _rentasPrev.length ? _rentasPrev[0] : null;
   var _now = new Date();
   var _mesKeyPrev = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0');
-  var preview = resolverConcepto(concepto, _rentaIdPrev, _mesKeyPrev);
-  // Sin propiedad seleccionada, resolverConcepto cae a día 1 y "Propiedad": avisarlo en vez de
-  // dejar que el usuario crea que así saldrá su factura.
-  var _aviso = _rentaIdPrev ? '' : '  ⚠️ (selecciona una propiedad arriba para ver el día de cobro real)';
+  var preview = resolverConcepto(concepto, _rentaRefPrev ? _rentaRefPrev.id : '', _mesKeyPrev);
+  var _aviso = '';
+  if (!_rentaRefPrev && concepto.indexOf('{dia}') >= 0) {
+    _aviso = '  ⚠️ el día saldrá del día de cobro de la propiedad al facturar';
+  } else if (_rentasPrev.length > 1) {
+    _aviso = '  (ejemplo con ' + _rentaRefPrev.nombre + ')';
+  }
   _prevEl.textContent = '📄 Preview: ' + preview + _aviso;
 }
 
