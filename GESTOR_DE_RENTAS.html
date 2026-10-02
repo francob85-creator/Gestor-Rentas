@@ -3886,7 +3886,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v104 · 26-sep-2026';
+var APP_VERSION = 'v105 · 02-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -16139,7 +16139,15 @@ function _renderDetalleHistorialInquilinos(renta) {
   var _totalVida = _cobradoActual + _cobradoPrevio;
   var _pagosVida = _pagosActual + _pagosPrevio;
   // Cifras de una fila: "Cobrado $X · N pagos", o el aviso de que no hay pagos capturados.
-  function _cifrasFila(monto, pagos) {
+  function _cifrasFila(monto, pagos, heredado) {
+    // FIX SUBDIV-HISTORIAL (2026-10): una entrada heredada de una subdivisión lleva monto pero
+    // cero pagos a propósito —se repartió el total, no los movimientos—, así que se etiqueta como
+    // historia heredada en vez de decir "0 pagos", que parecería un error.
+    if (heredado) {
+      return '<div style="font-size:11px;color:var(--text2);margin-top:3px">'
+        + '<b style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;color:var(--accent)">' + fmt(monto) + '</b>'
+        + ' <span style="color:var(--text3)">· parte heredada del inmueble original</span></div>';
+    }
     if (!pagos) return '<div style="font-size:11px;color:var(--text3);margin-top:3px">Sin pagos registrados</div>';
     return '<div style="font-size:11px;color:var(--text2);margin-top:3px">'
       + '<b style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;color:var(--accent)">' + fmt(monto) + '</b>'
@@ -16179,7 +16187,7 @@ function _renderDetalleHistorialInquilinos(renta) {
       + '<div style="width:34px;height:34px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--text3);flex-shrink:0">' + escHtml((nombre||'?')[0].toUpperCase()) + '</div>'
       + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text2)">' + escHtml(nombre) + '</div>'
       + '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + (h.inicio ? fmtDate(h.inicio) : '—') + ' → ' + (h.fin ? fmtDate(h.fin) : '—') + '</div>'
-      + _cifrasFila(Number(h.totalCobrado) || 0, Number(h.numPagos) || 0) + '</div>'
+      + _cifrasFila(Number(h.totalCobrado) || 0, Number(h.numPagos) || 0, !!h._heredadoSubdivision) + '</div>'
       + _chevH + '</div>';
   });
   if (!filas) return '';
@@ -17390,11 +17398,49 @@ async function ejecutarSubdivision() {
   renta.archivadaEn = new Date().toISOString();
   renta.archivadaMotivo = 'Subdividida en ' + cantidad + ' propiedades';
   renta._localWriteAt = Date.now();
+  // FIX SUBDIV-HISTORIAL (2026-10): hasta aquí las partes nacían con abonos:[] y sin historial, y
+  // todo lo cobrado se quedaba en la propiedad archivada. Al subdividir y volver a fusionar —el
+  // caso de LOCAL JUAREZ— el inmueble perdía de vista $2,074,800: la fusión sí consolida
+  // historiales (FIX FUSION-HISTORIAL), pero ya no quedaba nada que consolidar.
+  // Franco decidió (02-oct-2026) repartir la historia en proporción a la renta de cada parte: así,
+  // si las partes se vuelven a fusionar, los totales suman otra vez lo que de verdad se cobró.
+  // Se reparte el TOTAL, no los abonos uno por uno: partir un pago real de $10,000 en tres de
+  // $3,333 inventaría movimientos que nunca existieron. Por eso la entrada va con abonos:[] y
+  // numPagos:0, marcada con _heredadoSubdivision para que la vista la muestre como lo que es:
+  // historia heredada del inmueble, no pagos cobrados por esa parte.
+  var _histTotalOrig = (renta.abonos || []).reduce(function(s, a) { return s + (Number(a.monto) || 0); }, 0);
+  (renta.historialInquilinos || []).forEach(function(h) { _histTotalOrig += Number(h.totalCobrado) || 0; });
+  var _sumaMontosPartes = nuevasProps.reduce(function(s, p) { return s + (Number(p.monto) || 0); }, 0);
+  var _repartido = 0; // acumulado, para que el redondeo no pierda ni invente centavos
   // 2. Crear las nuevas propiedades
   var nuevasIds = [];
-  nuevasProps.forEach(function(np) {
+  nuevasProps.forEach(function(np, _npIdx) {
     var nuevoId = uid();
     nuevasIds.push(nuevoId);
+    var _histHeredado = [];
+    if (_histTotalOrig > 0 && _sumaMontosPartes > 0) {
+      var _esUltima = (_npIdx === nuevasProps.length - 1);
+      // La última parte se lleva el remanente exacto: evita que el redondeo haga que la suma de
+      // las partes no cuadre con el total original.
+      var _porcion = _esUltima
+        ? Math.round((_histTotalOrig - _repartido) * 100) / 100
+        : Math.round(_histTotalOrig * ((Number(np.monto) || 0) / _sumaMontosPartes) * 100) / 100;
+      _repartido += _porcion;
+      var _pct = Math.round(((Number(np.monto) || 0) / _sumaMontosPartes) * 100);
+      _histHeredado.push({
+        nombre: 'Historia de ' + renta.nombre,
+        clienteId: '',
+        inicio: renta.inicio || '',
+        fin: new Date().toISOString().slice(0, 10),
+        monto: 0,
+        totalCobrado: _porcion,
+        numPagos: 0,
+        abonos: [],
+        motivo: 'Heredado al subdividir ' + renta.nombre + ' (' + _pct + '% de la renta)',
+        _heredadoSubdivision: true,
+        propNombre: renta.nombre
+      });
+    }
     var nuevaRenta = {
       id: nuevoId,
       nombre: np.nombre,
@@ -17404,6 +17450,7 @@ async function ejecutarSubdivision() {
       dia: renta.dia || 1,
       clienteId: '',
       abonos: [],
+      historialInquilinos: _histHeredado,
       formaPagoId: renta.formaPagoId || '',
       grupo: renta.grupo || '',
       origenSubdivision: rentaId, // referencia a la original
