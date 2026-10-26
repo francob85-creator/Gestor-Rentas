@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v109 · 26-oct-2026';
+var APP_VERSION = 'v110 · 26-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -7456,15 +7456,35 @@ function fbStartSync() {
 // ── Page Visibility API — reconnect Firestore when app returns to foreground ──
 (function() {
   var _wasHidden = false;
+  // FIX FOREGROUND-RECONEXION (2026-10): momento en que la app se fue a segundo plano. Ver el
+  // porqué en _longAbsence, abajo.
+  var _hiddenAt = 0;
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'hidden') {
       _wasHidden = true;
+      _hiddenAt = Date.now();
     } else if (document.visibilityState === 'visible' && _wasHidden) {
       _wasHidden = false;
       if (!_fbReady || !currentUser || !_fbAuth) return;
       // Check if listener is still alive by testing the unsubscribe ref
       var _listenerDead = !_fbUnsubscribe || !_fbUnsubscribeAbonos;
-      var _longAbsence = Date.now() - _fbLastCloudTs > 60000; // >1min since last cloud update
+      // FIX FOREGROUND-RECONEXION (2026-10): esto medía Date.now() - _fbLastCloudTs, creyendo que
+      // era "cuánto llevo sin hablar con el servidor". No lo era: _fbLastCloudTs guarda el
+      // updatedAt del documento, o sea CUÁNDO SE MODIFICARON LOS DATOS por última vez. Como lo
+      // normal es que nadie registre nada durante minutos u horas, la resta superaba el minuto
+      // CASI SIEMPRE y la condición daba verdadero en cada regreso a la ventana: se tiraba y se
+      // rehacía toda la sincronización (fbStopSync + fbStartSync) aunque estuviera sana. Cada
+      // reinicio rebaja rentas, clientes y abonos COMPLETOS, recrea los cuatro listeners —y cada
+      // uno entrega primero su copia en caché y luego la del servidor—, así que la pantalla se
+      // repintaba varias veces seguidas: el parpadeo que Franco reportó el 26-oct, con el
+      // "[Sync] Refresh de subcolecciones omitido" repitiéndose hasta 7 veces en 2 segundos.
+      // Además cada reinicio cuesta ~100 lecturas de Firestore que nadie pidió.
+      // El comentario original decía la intención correcta ("si la PC estuvo en background mucho
+      // tiempo, p.ej. apagada y prendida"), así que ahora se mide EXACTAMENTE eso: cuánto estuvo
+      // la app en segundo plano. Un vistazo rápido a otra ventana ya no reinicia nada; una
+      // ausencia real de más de un minuto sí, como siempre. Un listener muerto sigue forzando la
+      // reconexión por su propia vía (_listenerDead), que es la red de seguridad que importa.
+      var _longAbsence = _hiddenAt > 0 && (Date.now() - _hiddenAt > 60000); // >1min en segundo plano
       if (_listenerDead || _longAbsence) {
         console.warn('[Sync] Regresando a foreground — reconectando listeners...');
         // FIX SYNC: si la PC estuvo en background mucho tiempo (>1min, p.ej. apagada y prendida),
