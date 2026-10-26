@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v107 · 02-oct-2026';
+var APP_VERSION = 'v109 · 26-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4050,7 +4050,25 @@ const db = firebase.firestore();
 // IMPORTANTE: configuración estática aplicada UNA sola vez aquí, ANTES de cualquier uso de
 // Firestore. NO es disableNetwork/enableNetwork en eventos de carga (eso ya se probó y falló).
 // Solo iOS standalone paga el ligero costo de latencia del long-polling; desktop no se toca.
-var _esIOSStandalonePWA = (typeof navigator !== 'undefined' && navigator.standalone === true);
+// FIX LP-STANDALONE-FALSO (2026-10): `navigator.standalone` es una API no estándar de Apple, ya
+// deprecada, y en iOS 18.7 / Safari 27 dejó de devolver true aun abriendo desde el ícono de la
+// pantalla de inicio. Por eso esta condición daba falso, el bloque de long-polling de abajo NI
+// SIQUIERA se intentaba, y en la bitácora no quedaba ni aviso de éxito ni de fallo — silencio
+// total, que es lo que mantuvo el problema escondido desde v82 pese a FIX LP-NUNCA-ACTIVO.
+// El iPhone seguía en WebChannel, el transporte que se cuelga: la bitácora del 26-oct-2026
+// mostraba "WebChannelConnection RPC 'Listen' stream transport errored" en CADA regreso a
+// foreground, con los retrasos de minutos al recibir cambios de otro dispositivo.
+// La cura deja de depender de esa API y detecta iOS directamente — el canal se cuelga en iOS,
+// no solo en iOS-abierto-desde-el-ícono, así que también cubre Safari sin PWA instalada.
+// NO se usa matchMedia('(display-mode: standalone)'): el primer intento lo incluía y resultó
+// verdadero en la PWA de ESCRITORIO de Franco (la app instalada en Windows tiene su propia
+// ventana), activándole long-polling en la computadora, donde WebChannel funciona bien y es más
+// rápido. El escritorio se queda como estaba.
+// El nombre de la variable se conserva para no tocar sus usos; hoy significa "necesita long-polling".
+var _esIOSStandalonePWA = (typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) // iPadOS se reporta como Mac
+));
 // FIX TRANSPORTE-UNIVERSAL (2026-08): interruptor manual de long-polling para CUALQUIER
 // dispositivo. El caso Samsung Z Fold demostró que el canal WebChannel de Firestore también
 // puede morir fuera de iOS (capas de seguridad/VPN del equipo estrangulan el streaming: la
@@ -4089,7 +4107,11 @@ if (_esIOSStandalonePWA || _lpManual) {
     }
   }
   if (_lpOk) {
-    console.log('[Sync] Transporte long-polling ACTIVADO (' + (_lpManual ? 'interruptor manual lp=1' : 'iOS standalone') + ')');
+    // FIX LP-STANDALONE-FALSO (2026-10): va por console.warn y no console.log para que QUEDE en
+    // la bitácora (que solo captura warn/error). Como log era invisible desde el teléfono: no
+    // había manera de confirmar si la cura estaba puesta, y esa ceguera es la razón de que el
+    // fallo sobreviviera desde v82. No es un error — el texto lo aclara para no alarmar.
+    console.warn('[Sync] ✅ Transporte long-polling ACTIVADO (' + (_lpManual ? 'interruptor manual lp=1' : 'iOS') + ') — informativo, no es un error.');
   }
 }
 const auth = firebase.auth();
@@ -26399,12 +26421,18 @@ async function bioLogin() {
       btn.classList.remove('loading');
       return;
     }
-    // Log in directly
-    currentUser = user;
-    try { sessionStorage.setItem('gestorrenta_session', JSON.stringify({id: user.id, ts: Date.now()})); } catch(e) { console.warn('[Session] write failed:', e.message); }
-    document.getElementById('loginScreen').style.display = 'none';
-    applyPermissions();
-    render();
+    // FIX BIO-SIN-SYNC (2026-10): este camino duplicaba a mano los primeros pasos de
+    // _finishLogin y se quedaba corto: NUNCA llamaba a fbStartSync() ni al get() directo que
+    // carga los datos de la nube. Entrar con huella/Face ID dejaba la app SIN conectar a
+    // Firebase: render() pintaba el state vacío y la pantalla se quedaba en blanco hasta
+    // recargar. La consola lo delataba — faltaban "[Sanitizar] State sanitizado" y "[Sync]
+    // Datos frescos del servidor APLICADOS", que sí salen entrando con usuario y contraseña.
+    // _finishLogin se creó justamente para compartirse entre TODOS los caminos de login (lo
+    // dice su comentario) y el biométrico se quedó fuera. Delegar en ella cura la pantalla en
+    // blanco y además recupera dos cosas que aquí se perdían: volver a la página donde estabas
+    // y marcar el estado de conexión. ofrecerBioRegistro() no molesta: sale sola si ya hay
+    // credencial registrada, que es el caso de quien entra por aquí.
+    _finishLogin(user);
   } catch(e) {
     if (e.name === 'NotAllowedError') {
       document.getElementById('login-error').textContent = 'Autenticación cancelada.';
