@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v108 · 26-oct-2026';
+var APP_VERSION = 'v107 · 02-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4050,27 +4050,7 @@ const db = firebase.firestore();
 // IMPORTANTE: configuración estática aplicada UNA sola vez aquí, ANTES de cualquier uso de
 // Firestore. NO es disableNetwork/enableNetwork en eventos de carga (eso ya se probó y falló).
 // Solo iOS standalone paga el ligero costo de latencia del long-polling; desktop no se toca.
-// FIX LP-STANDALONE-FALSO (2026-10): `navigator.standalone` es una API no estándar de Apple, ya
-// deprecada, y en iOS 18.7 / Safari 27 dejó de devolver true aun abriendo desde el ícono de la
-// pantalla de inicio. Por eso esta condición daba falso, el bloque de long-polling de abajo NI
-// SIQUIERA se intentaba, y en la bitácora no quedaba ni aviso de éxito ni de fallo — silencio
-// total, que es justo lo que mantuvo el problema escondido desde v82 pese a FIX LP-NUNCA-ACTIVO.
-// El iPhone seguía en WebChannel, el transporte que se cuelga: la bitácora del 26-oct-2026
-// mostraba "WebChannelConnection RPC 'Listen' stream transport errored" en CADA regreso a
-// foreground, con los retrasos de minutos al recibir cambios de otro dispositivo.
-// La cura es dejar de depender de esa API: se suma el display-mode estándar y, sobre todo, iOS
-// entero — el canal se cuelga en iOS, no solo en iOS-abierto-desde-el-ícono. El costo del
-// long-polling (algo más de latencia por consulta y más lecturas) es preferible a quedarse sin
-// datos frescos por minutos, y un dispositivo con datos viejos es el origen histórico de las
-// pérdidas de información de este proyecto. Decisión de Franco: "no importa que gaste más datos".
-// El nombre de la variable se conserva para no tocar sus usos; hoy significa "necesita long-polling".
-var _esIOSStandalonePWA = (typeof navigator !== 'undefined' && (
-  navigator.standalone === true ||
-  (typeof window !== 'undefined' && typeof window.matchMedia === 'function' &&
-   window.matchMedia('(display-mode: standalone)').matches) ||
-  /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) // iPadOS se reporta como Mac
-));
+var _esIOSStandalonePWA = (typeof navigator !== 'undefined' && navigator.standalone === true);
 // FIX TRANSPORTE-UNIVERSAL (2026-08): interruptor manual de long-polling para CUALQUIER
 // dispositivo. El caso Samsung Z Fold demostró que el canal WebChannel de Firestore también
 // puede morir fuera de iOS (capas de seguridad/VPN del equipo estrangulan el streaming: la
@@ -4109,11 +4089,7 @@ if (_esIOSStandalonePWA || _lpManual) {
     }
   }
   if (_lpOk) {
-    // FIX LP-STANDALONE-FALSO (2026-10): va por console.warn y no console.log para que QUEDE en
-    // la bitácora (que solo captura warn/error). Como log era invisible desde el teléfono: no
-    // había manera de confirmar si la cura estaba puesta, y esa ceguera es la razón de que el
-    // fallo sobreviviera desde v82. No es un error — el texto lo aclara para no alarmar.
-    console.warn('[Sync] ✅ Transporte long-polling ACTIVADO (' + (_lpManual ? 'interruptor manual lp=1' : 'iOS/standalone') + ') — informativo, no es un error.');
+    console.log('[Sync] Transporte long-polling ACTIVADO (' + (_lpManual ? 'interruptor manual lp=1' : 'iOS standalone') + ')');
   }
 }
 const auth = firebase.auth();
