@@ -201,7 +201,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX TRANSPORTE-IOS`, `FIX META-ONLY`, `MULTI-FACTURA`, `FIX TIPOS-SELECTOR`,
 `FIX LP-STANDALONE-FALSO`, `FIX BIO-SIN-SYNC`, `FIX FOREGROUND-RECONEXION`,
 `FIX PARPADEO-TARJETAS`, `FIX BAJA-PROG-SIN-GUARDIA`, `FIX SETDATE-CALENDARIO`,
-`FIX CHROME-PASSWORD-PROMPT`, `FIX SCROLL-BACKDROP`.
+`FIX CHROME-PASSWORD-PROMPT`, `FIX SCROLL-BACKDROP`, `FIX NAV-OFFSET-REAL`,
+`FIX HEADER-OFFSET-OBSERVER`, `FIX VH-IOS`.
 
 ---
 
@@ -393,6 +394,41 @@ código, pídele a Franco una medición: él las corre sin problema y zanjan la 
 
 Corolario iOS/escritorio: que el iPhone vaya **más** fluido que la computadora no es raro, es una
 pista. Safari acelera por hardware efectos que Chrome en Windows calcula a pulso.
+
+## Cinco intentos fallidos = estás arreglando el síntoma
+
+Quitar el velo de la barra de estado en iOS costó **cinco intentos revertidos** (v118, v121-v122,
+v123, v127, v129). Los cinco hacían lo mismo con distinta maña: ajustar el `padding-top` de
+`.main` para que el header dejara de tapar el contenido. Medir más tarde, medir con
+`ResizeObserver`, medir también el menú de abajo. Ninguno funcionó, y cada uno parecía una
+hipótesis razonable.
+
+La causa estaba una capa más abajo, en una línea que llevaba años ahí: `body { height: 100vh }`.
+En iOS `100vh` **no es la altura visible**, es la pantalla completa sin descontar las barras del
+sistema. Con `black-translucent` la app ocupaba toda la pantalla y el número coincidía; con
+`default` iOS reserva la barra de estado y el body quedaba ~62px más alto que lo visible. Ese
+sobrante hacía que se desplazara la **página entera** en vez de solo `.main`, y el padding —el
+que tanto ajustábamos— se iba hacia arriba con ella. La cura es `100dvh`, que sí es la altura
+visible real, declarado **después** de `100vh` como respaldo para navegadores viejos.
+
+Tres cosas que dejó este caso:
+
+- **Si llevas tres intentos y los tres fallan por razones distintas, la hipótesis compartida es
+  la que está mal.** No era "medimos mal el header": era que medir el header nunca iba a servir.
+  Parar y preguntarse *¿qué están dando por cierto todos mis intentos?* vale más que un sexto.
+- **Lo zanjó medir en el aparato.** `DIAG-LAYOUT` (v129) escribió en la bitácora `mainTop=-62`
+  con `headerH` estable y `padTop(style) == padTop(real)`. Ese solo renglón mató de un golpe las
+  otras dos hipótesis —medición temprana y sobrescritura— y señaló la buena. Cuando un síntoma
+  sobrevive a varios arreglos, **instrumenta y pide la bitácora antes de intentar el siguiente**.
+- **Prefiere la unidad que el navegador calcula a la constante que tú calculas.** La duda de
+  Franco fue la correcta: *"¿no va a quedar descuadrado en otros iPhones o Androids?"*. Un número
+  fijo en píxeles ajustado a un aparato se descuadra en el siguiente; `dvh` lo resuelve cada
+  navegador con su propia realidad. Vale para `safe-area-inset`, `dvh`/`svh`/`lvh` y cualquier
+  medida del sistema: si existe la que pregunta, no inventes la que adivina.
+
+Corolario de higiene: el diagnóstico temporal **se quita cuando cierra el caso** (v131). Si se
+queda, llena la bitácora de ruido y tapa los avisos que sí importen — que es exactamente la forma
+en que este proyecto se queda ciego.
 
 ## Si una función lee con reglas, su par tiene que escribir con las mismas
 
