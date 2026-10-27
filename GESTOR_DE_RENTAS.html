@@ -105,9 +105,17 @@
     right: 0;
     z-index: 100;
     /* FIX HEADER-V5: efecto glass sutil + línea inferior fina para definir el borde */
-    background: rgba(245, 247, 246, 0.85);
-    backdrop-filter: saturate(180%) blur(10px);
-    -webkit-backdrop-filter: saturate(180%) blur(10px);
+    /* FIX SCROLL-BACKDROP (2026-10): el efecto glass llevaba backdrop-filter, de los filtros
+       mas caros que existe: al estar en un header FIJO sobre el contenido, el navegador tenia
+       que recalcular el desenfoque de todo lo que pasaba por detras EN CADA CUADRO del scroll,
+       con ~5,000 elementos en pagina. De ahi el scroll a saltos y el segundo y medio al cambiar
+       de pestana en la computadora. En iPhone no se notaba porque Safari lo acelera por hardware
+       (es el efecto nativo de iOS); Chrome en Windows lo calcula a pulso. Medido en el equipo de
+       Franco: el pintado tardaba 35ms -- el retraso no era del codigo sino del navegador
+       dibujando. Desactivando backdrop-filter por consola el scroll quedo fluido al instante.
+       Se cambia por el MISMO color en opaco: sin desenfoque un fondo al 85% dejaria ver el
+       contenido pasar por detras. */
+    background: #f5f7f6;
     box-shadow: none;
     border-bottom: 1px solid rgba(0,0,0,0.04);
     box-sizing: border-box;
@@ -345,7 +353,7 @@
     position: fixed; inset: 0; background: rgba(0,0,0,0.7);
     display: flex; align-items: center; justify-content: center;
     z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
-    backdrop-filter: blur(4px);
+    /* FIX SCROLL-BACKDROP: blur decorativo retirado — el fondo negro al 70% ya oculta. */
   }
   .modal-overlay.open { opacity: 1; pointer-events: all; }
   .modal {
@@ -1539,7 +1547,7 @@
   #onboarding-overlay {
     position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.7);
     display:none;align-items:center;justify-content:center;
-    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    /* FIX SCROLL-BACKDROP: blur decorativo retirado. */
     animation:obFadeIn .3s ease;
   }
   #onboarding-overlay.show { display:flex; }
@@ -3894,7 +3902,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v115 · 27-oct-2026';
+var APP_VERSION = 'v116 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
