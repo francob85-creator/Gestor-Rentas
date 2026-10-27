@@ -3913,7 +3913,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v123 · 27-oct-2026';
+var APP_VERSION = 'v124 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -6050,6 +6050,11 @@ function _syncPayload(stripped, tag) {
     clientesMigratedV2: !!state._clientesMigratedV2,
     abonosMigratedV2: !!state._abonosMigratedV2,
     _deletedClienteIds: state._deletedClienteIds || [], // FIX CLIENTE-RESURRECT: tombstone durable cross-device
+    // FIX HUERFANAS-NO-PERSISTEN (2026-10): esta lista NO se subia. Vivia solo en memoria y
+    // localStorage, asi que al recargar se reconstruia unicamente desde la lista fija del codigo
+    // y toda factura marcada como revisada por el usuario volvia a reportarse. Ademas no
+    // viajaba entre dispositivos: marcabas en la PC y el celular seguia avisando.
+    _facturasHuerfanasOk: state._facturasHuerfanasOk || [],
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     updatedBy: (currentUser && currentUser.username ? currentUser.username : 'unknown' || 'unknown') + (tag || ''),
     _sessionId: _fbSessionId
@@ -6555,6 +6560,13 @@ function _applyServerData(data, cloudTs) {
     if (data._deletedClienteIds && data._deletedClienteIds.length) { // FIX CLIENTE-RESURRECT: unir tombstone remoto
       if (!state._deletedClienteIds) state._deletedClienteIds = [];
       data._deletedClienteIds.forEach(function(_cid){ if (state._deletedClienteIds.indexOf(_cid) < 0) state._deletedClienteIds.push(_cid); });
+    }
+    // FIX HUERFANAS-NO-PERSISTEN (2026-10): UNION, nunca reemplazo. Si se asignara la lista
+    // entrante tal cual, un dispositivo con memoria vieja borraria las marcas de los demas --
+    // la leccion de _mergeFormasPagoUnion. Lo local SIEMPRE se preserva.
+    if (data._facturasHuerfanasOk && data._facturasHuerfanasOk.length) {
+      if (!state._facturasHuerfanasOk) state._facturasHuerfanasOk = [];
+      data._facturasHuerfanasOk.forEach(function(_fu){ if (state._facturasHuerfanasOk.indexOf(_fu) < 0) state._facturasHuerfanasOk.push(_fu); });
     }
     _clearStatusCache(); _dashboardDirty = true; _rentasDirty = true;
     _lsSave(); // sync: data received from server
@@ -7077,6 +7089,13 @@ function _applyMainDocSnapshot(data, isExternalUpdate) {
   if (data._deletedClienteIds && data._deletedClienteIds.length) { // FIX CLIENTE-RESURRECT: unir tombstone remoto
     if (!state._deletedClienteIds) state._deletedClienteIds = [];
     data._deletedClienteIds.forEach(function(_cid){ if (state._deletedClienteIds.indexOf(_cid) < 0) state._deletedClienteIds.push(_cid); });
+  }
+  // FIX HUERFANAS-NO-PERSISTEN (2026-10): UNION, nunca reemplazo. Si se asignara la lista
+  // entrante tal cual, un dispositivo con memoria vieja borraria las marcas de los demas --
+  // la leccion de _mergeFormasPagoUnion. Lo local SIEMPRE se preserva.
+  if (data._facturasHuerfanasOk && data._facturasHuerfanasOk.length) {
+    if (!state._facturasHuerfanasOk) state._facturasHuerfanasOk = [];
+    data._facturasHuerfanasOk.forEach(function(_fu){ if (state._facturasHuerfanasOk.indexOf(_fu) < 0) state._facturasHuerfanasOk.push(_fu); });
   }
 
   // Protect facturacion on own-session echo
