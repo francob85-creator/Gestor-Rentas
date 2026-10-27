@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v111 · 27-oct-2026';
+var APP_VERSION = 'v112 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -11808,6 +11808,12 @@ function migrarPagosCompletos() {
   }
 }
 
+// FIX BAJA-PROG-SIN-GUARDIA (2026-10): rentas cuya baja programada ya se intentó y falló el
+// archivado. Vive en memoria, NO en la renta, para no ensuciar el documento de Firestore con un
+// campo de control. Sirve para avisar UNA sola vez por sesión en vez de en cada pasada: esta
+// función corre seguido (arranque y snapshots), y un fallo permanente convertiría el aviso en un
+// bucle eterno que el usuario aprende a ignorar — la lección de FIX AVISOS-BUCLE.
+var _bajaProgAvisadas = {};
 function procesarBajasProgramadas(fromSnapshot) {
   var hoyISO = new Date().toISOString().slice(0,10);
   var changed = false;
@@ -11843,7 +11849,31 @@ function procesarBajasProgramadas(fromSnapshot) {
         _ua[r.id] = Date.now();
         try { localStorage.setItem('gr_unassigned', JSON.stringify(_ua)); } catch(e) {}
       } catch(e) { console.warn('[LS] gr_unassigned write failed:', e.message); }
-      if (typeof registrarSalidaInquilino === 'function') registrarSalidaInquilino(r, r.clienteId, r.bajaProgramadaMotivo || 'Fin de contrato');
+      // FIX BAJA-PROG-SIN-GUARDIA (2026-10): de los tres caminos de baja, éste era el ÚNICO que
+      // borraba los pagos sin comprobar que el inquilino hubiera quedado archivado.
+      // registrarSalidaInquilino tiene dos salidas silenciosas (cliente no encontrado, y la
+      // dedup de GUARD C4): en ambas regresa sin archivar NADA, y el código de abajo borraba los
+      // abonos igual. Así se perdieron los pagos de Omar y los de Algodoneros en dos propiedades
+      // — reparados a mano el 26-oct desde respaldos, pero irrecuperables si no hubiera habido
+      // respaldo. confirmarBajaInquilino y _confirmarCambioInquilino ya se protegieron en v102/
+      // v103; esto cierra el tercero.
+      // Se usa SOLO la verificación local (síncrona). La comprobación contra el servidor que
+      // usan los otros dos caminos es async, y esta función no lo es: volverla async cambiaría
+      // el orden en que se aplican los snapshots, que es justo lo que ya tumbó la app una vez.
+      // Si no quedó archivado, se aborta esta baja SIN tocar nada: bajaProgramada se conserva,
+      // así que se reintenta en la siguiente pasada en vez de perderse.
+      var _cliSaliente = r.clienteId;
+      if (typeof registrarSalidaInquilino === 'function') registrarSalidaInquilino(r, _cliSaliente, r.bajaProgramadaMotivo || 'Fin de contrato');
+      var _quedoArchivado = (r.historialInquilinos || []).some(function(h) { return h.clienteId === _cliSaliente; });
+      if (!_quedoArchivado) {
+        if (!_bajaProgAvisadas[r.id]) {
+          _bajaProgAvisadas[r.id] = true; // un aviso por sesión, no uno por pasada
+          if (typeof _seArchivoElInquilino === 'function') _seArchivoElInquilino(r, _cliSaliente, 'BajaProgramada');
+        } else {
+          console.error('[BajaProgramada] "' + (r.nombre || r.id) + '" sigue sin archivar a ' + _cliSaliente + ' — baja cancelada otra vez, no se borró nada (aviso ya dado en esta sesión).');
+        }
+        return; // siguiente renta; ésta se reintentará
+      }
       // FIX BAJA-RESURRECT V2: marcar timestamp y abonos como borrados antes
       r._vacatedAt = Date.now();
       if (!r._deletedAbonoIds) r._deletedAbonoIds = [];
