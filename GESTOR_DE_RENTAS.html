@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v112 · 27-oct-2026';
+var APP_VERSION = 'v113 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -29559,7 +29559,12 @@ function marcarPagado(rentaId, abonoId) {
       '<div><label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Forma de pago</label>' +
         '<select id="mp-metodo" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface)">' + fpOptions + '</select></div>' +
       '<div><label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Fecha de pago</label>' +
-        '<input id="mp-fecha" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" value="' + _isoToDisplay(hoyStr) + '" data-iso="' + hoyStr + '" oninput="_onDateInput(this)" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface)" /></div>' +
+        // FIX FECHA-PAGO-CALENDARIO (2026-10): era un campo de texto que obligaba a teclear la
+        // fecha dígito por dígito. Pasa a type="date" para que abra el calendario nativo, igual
+        // que los otros 7 campos de fecha de la app (dep-fecha, hi-inicio, modal-baja-fecha...).
+        // La lectura no cambia: _getDateVal ya contempla type==='date' y devuelve el value en
+        // ISO directamente, así que confirmarMarcarPagado sigue recibiendo lo mismo que antes.
+        '<input id="mp-fecha" type="date" value="' + hoyStr + '" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface)" /></div>' +
       '<div><label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Nota (opcional)</label>' +
         '<input id="mp-nota" placeholder="Referencia de pago, # de operación..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface)" /></div>' +
     '</div>' +
