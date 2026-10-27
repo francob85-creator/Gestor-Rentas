@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v110 · 26-oct-2026';
+var APP_VERSION = 'v111 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12778,6 +12778,21 @@ function clienteLink(id, prefix) {
 // ============================================================
 // RENDER
 // ============================================================
+// FIX PARPADEO-TARJETAS (2026-10): la animación de entrada `cardFadeIn` arranca las tarjetas en
+// opacity:0 y las va revelando escalonadas (40ms por tarjeta, hasta 400ms). Como la clase
+// `card-animate` va escrita en el HTML de cada tarjeta, la animación se RELANZA en CADA repintado
+// de la lista — incluidos los que no pidió nadie, los que ocurren porque llegaron datos del
+// servidor. Resultado: las propiedades y clientes se apagaban y reaparecían en cascada "como si
+// se estuvieran cargando una y otra vez", y era peor con dos dispositivos abiertos a la vez,
+// porque entonces llegan muchos más snapshots y la lista se repinta mucho más seguido. Al cerrar
+// uno de los dos, el parpadeo paraba — que fue justo la pista que lo delató.
+// La animación SÍ aporta cuando entras a la pantalla, así que no se quita: solo se aplica cuando
+// el pintado viene de una navegación reciente (window._lastNavTime, que ya existía para otro
+// arreglo). Un repintado de fondo deja las tarjetas quietas, que es lo que el usuario espera.
+// Verificado en vivo el 26-oct: desactivando `.card-animate` por consola el parpadeo paró en seco.
+function _claseAnimTarjeta() {
+  return (window._lastNavTime && (Date.now() - window._lastNavTime) < 1200) ? ' card-animate' : '';
+}
 var _renderTimer = null;
 var _dashboardDirty = true;
 var _MAX_FILE_BYTES = 5 * 1024 * 1024;   // 5 MB — file upload limit
@@ -14465,7 +14480,7 @@ function renderListCard(renta) {
   // FIX INCREMENTOS-20D-V5: fila de aviso de incremento si está dentro de ventana
   var _incRow = _renderIncrementoRow(renta);
   return `
-  <div class="list-card card-animate${_bajaProg ? ' baja-programada' : ''}" data-action="verDetalle" data-arg="${renta.id}" style="border-left:4px solid ${statusColor};padding-left:12px;align-items:center">
+  <div class="list-card${_claseAnimTarjeta()}${_bajaProg ? ' baja-programada' : ''}" data-action="verDetalle" data-arg="${renta.id}" style="border-left:4px solid ${statusColor};padding-left:12px;align-items:center">
     <div class="list-card-left">
       <div class="list-card-name">${escHtml(renta.nombre)}</div>
       <div class="list-card-sub" style="white-space:normal;overflow:visible;text-overflow:clip">${_clienteRow}${_diaRow}${facListBadge}${_incRow}</div>
@@ -14508,7 +14523,7 @@ function renderCard(renta) {
   // FIX INCREMENTOS-20D-V5: fila de aviso de incremento si está dentro de ventana
   var _incRowCard = _renderIncrementoRow(renta);
   return `
-  <div class="card card-animate ${st.estado}${renta.bajaProgramada ? ' baja-programada' : ''}" data-action="verDetalle" data-arg="${renta.id}">
+  <div class="card${_claseAnimTarjeta()} ${st.estado}${renta.bajaProgramada ? ' baja-programada' : ''}" data-action="verDetalle" data-arg="${renta.id}">
     <div class="card-top">
       <div class="card-prop">${escHtml(renta.nombre)}</div>
     </div>
@@ -14775,7 +14790,7 @@ function renderClienteCard(c) {
   var _rentasBlock = rentas.length
     ? '<div style="margin-bottom:10px">' + _rentasHtml + '</div>'
     : '<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Sin propiedades asignadas</div>';
-  return `<div class="card card-animate ${statusClass}" data-action="verDetalleCliente" data-arg="${c.id}" style="cursor:pointer">
+  return `<div class="card${_claseAnimTarjeta()} ${statusClass}" data-action="verDetalleCliente" data-arg="${c.id}" style="cursor:pointer">
     <div class="card-top">
       <div class="card-prop" style="font-size:16px">👤 ${escHtml(c.nombre||'')}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -14873,7 +14888,7 @@ function renderClienteListCard(c) {
   }
 
   return `
-  <div class="list-card card-animate" data-action="verDetalleCliente" data-arg="${c.id}" style="border-left:4px solid ${borderColor};padding-left:12px;align-items:center">
+  <div class="list-card${_claseAnimTarjeta()}" data-action="verDetalleCliente" data-arg="${c.id}" style="border-left:4px solid ${borderColor};padding-left:12px;align-items:center">
     <div class="list-card-left">
       <div class="list-card-name">${escHtml(c.nombre)}</div>
       <div class="list-card-sub" style="white-space:normal;overflow:visible;text-overflow:clip">${propSub}</div>
