@@ -198,7 +198,10 @@ cambio o algo preexistente. Después corrige la causa, no el síntoma.
 ```
 
 Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-MAINDOC`,
-`FIX TRANSPORTE-IOS`, `FIX META-ONLY`, `MULTI-FACTURA`, `FIX TIPOS-SELECTOR`.
+`FIX TRANSPORTE-IOS`, `FIX META-ONLY`, `MULTI-FACTURA`, `FIX TIPOS-SELECTOR`,
+`FIX LP-STANDALONE-FALSO`, `FIX BIO-SIN-SYNC`, `FIX FOREGROUND-RECONEXION`,
+`FIX PARPADEO-TARJETAS`, `FIX BAJA-PROG-SIN-GUARDIA`, `FIX SETDATE-CALENDARIO`,
+`FIX CHROME-PASSWORD-PROMPT`, `FIX SCROLL-BACKDROP`.
 
 ---
 
@@ -319,10 +322,15 @@ Corolarios ya aprendidos:
   `_leerTs` es la cura canónica; úsalo en todo sitio de lectura.
 - iOS mata la PWA durante operaciones largas (ráfagas de timbrado). Toda operación con API
   externa necesita mecanismo de durabilidad/recuperación.
-- En iOS PWA standalone el transporte WebChannel se queda "zombi": por eso
-  `experimentalForceLongPolling` se aplica solo cuando `navigator.standalone === true`, una vez
-  al inicializar. **Nunca** enganchar `disableNetwork()`/`enableNetwork()` a eventos de carga:
-  ya se intentó y tumbó la app en producción.
+- En iOS el transporte WebChannel se queda "zombi": por eso `experimentalForceLongPolling` se
+  aplica en **todo iOS** (iPhone/iPad, por userAgent), una vez al inicializar. **Nunca**
+  enganchar `disableNetwork()`/`enableNetwork()` a eventos de carga: ya se intentó y tumbó la app
+  en producción. **No vuelvas a condicionarlo a `navigator.standalone`**: es una API no estándar
+  de Apple, deprecada, que en iOS 18.7 / Safari 27 dejó de devolver `true` aun abriendo desde el
+  ícono. La condición daba falso, el bloque ni se intentaba, y la cura llevaba 27 versiones sin
+  aplicarse. Tampoco uses `display-mode: standalone`: da verdadero también en la PWA de
+  **escritorio** y le activa long-polling a la computadora, donde WebChannel va mejor
+  (`FIX LP-STANDALONE-FALSO`, 2026-10).
 - Importaciones: batches atómicos de 450 + guardia post-importación de 90s
   (`_postImportGuardUntil`).
 - `_visiblesCache` debe invalidarse por cambio de referencia, no por llamadas manuales.
@@ -343,6 +351,81 @@ Corolarios ya aprendidos:
 
 ---
 
+# LA SEGUNDA LECCIÓN: LOS BUGS QUE IMPORTAN FALLAN EN SILENCIO
+
+Las jornadas del 26 y 27 de octubre de 2026 arreglaron ocho cosas (v109–v116). **Ninguna
+avisaba.** Todas se descubrieron meses después, por síntomas que parecían no tener relación: un
+parpadeo, una pantalla en blanco, un scroll a saltos. Si un arreglo crítico puede dejar de
+aplicarse sin que nadie se entere, tarde o temprano deja de aplicarse.
+
+## Todo arreglo crítico tiene que dejar rastro, y el rastro tiene que verse desde el teléfono
+
+El long-polling de iOS llevaba **27 versiones** sin encenderse. No fallaba: la condición daba
+falso y **no se intentaba siquiera**, así que no había ni aviso de éxito ni de fallo. Lo que lo
+delató fue un `WebChannelConnection ... transport errored` en la bitácora del iPhone, meses
+después.
+
+La bitácora solo captura `console.warn` y `console.error`. **Un `console.log` es invisible desde
+el celular**, que es donde ocurren los problemas de este proyecto. Si un arreglo importa, su
+confirmación va por `console.warn` con el texto aclarando que es informativo.
+
+Corolario: cuando una condición decide si se aplica una cura, **el camino que NO la aplica
+también debe poder verse**. Un silencio total no distingue "funcionó" de "nunca corrió".
+
+## Si el síntoma y la medición no cuadran, el problema está en otra capa
+
+El parpadeo de las tarjetas costó **tres hipótesis, dos equivocadas**. Se descartaron midiendo en
+el navegador de Franco, no opinando:
+
+- ¿Bucle de escrituras entre dispositivos? → **2 escrituras en 20 s.** Descartado.
+- ¿Listener muriendo y reconectando? → **0 muertes, 0 reinicios.** Descartado.
+- Contadores: **2 repintados medidos contra ~13 parpadeos vistos.**
+
+Esa última contradicción fue la que resolvió el caso: si el JavaScript pinta dos veces y el
+usuario ve trece, **lo que parpadea no es JavaScript**. Era una animación CSS que se relanzaba en
+cada repintado. Lo mismo con la lentitud en la computadora: el pintado medía **35 ms**, así que
+el segundo y medio no era del código sino del navegador dibujando — un `backdrop-filter` en un
+header fijo, que obliga a recalcular el desenfoque en cada cuadro del scroll.
+
+**Instrumentar en vivo es barato y concluyente.** Envolver una función para contarla, o inyectar
+un `<style>` que desactive un efecto, se deshace recargando y no toca producción. Antes de tocar
+código, pídele a Franco una medición: él las corre sin problema y zanjan la discusión.
+
+Corolario iOS/escritorio: que el iPhone vaya **más** fluido que la computadora no es raro, es una
+pista. Safari acelera por hardware efectos que Chrome en Windows calcula a pulso.
+
+## Si una función lee con reglas, su par tiene que escribir con las mismas
+
+`_getDateVal` distinguía `type="date"` al leer. `_setDateVal` no lo distinguía al escribir, y le
+metía `DD/MM/AAAA` a un input de fecha, que **lo rechaza y se queda vacío, sin error**. Llevaba
+tiempo vaciando la fecha sugerida al programar una baja y nadie lo relacionó.
+
+Cuando encuentres un par leer/escribir, revisa los dos lados antes de tocar uno.
+
+## Protege TODOS los caminos, no el que te trajo el reporte
+
+Dar de baja a un inquilino tiene **tres** caminos. Se protegieron dos en v102/v103 y el tercero
+—bajas programadas— siguió borrando pagos sin verificar nada: ahí se fueron Omar y Algodoneros en
+dos propiedades, $215,180 de historial que hubo que reconstruir desde respaldos.
+
+Lo mismo con `_finishLogin`, cuyo propio comentario dice *"shared by all login paths"*: el login
+biométrico se había quedado fuera y dejaba la app sin conectar a Firebase, en blanco.
+
+**Al proteger un camino o crear una función compartida, busca a sus hermanos** (`grep`) y
+confirma uno por uno que la usan. Un comentario que dice "todos" no garantiza que sean todos.
+
+## Revertir en producción es correcto; confundirlo con un diagnóstico, no
+
+El 26-oct la app salió en blanco tras publicar v108 y se revirtió de inmediato. Fue lo correcto
+—con clientes en vivo, primero se vuelve a terreno seguro—, pero **la causa resultó ser otra**:
+un bug viejo del login con huella. Franco tenía razón al decir "no reviertas".
+
+Revertir compra tiempo, no explica nada. Al hacerlo, dilo con esas palabras: *"revierto por
+precaución, todavía no sé la causa"*. Y no des por culpable al último cambio solo por ser el
+último.
+
+---
+
 # DESPLIEGUE (lo hace Franco)
 
 `git push` → esperar 1-2 min a GitHub Pages → abrir Safari con `?v=NN` (el número nuevo de
@@ -358,8 +441,20 @@ volver a agregar la PWA.
   segundo usuario tenga correo, guardar usuarios se rompe entero.
 - **`_afterFirebaseLogin`** puede ejecutar `saveUsers([user])` y borrar la lista completa de
   usuarios del servidor si `fbLoadUsers()` falla transitoriamente. Necesita guardia.
-- **19 facturas huérfanas** (sin abono asociado): Bodega Tajito, La Rivereña, EL RANCHITO,
-  Predio Magdalenas, Bodega Sarabia, Centenario. Sin diagnosticar.
+- ~~**19 facturas huérfanas** sin diagnosticar~~ → **RESUELTO el 26-27 oct 2026.** La causa no
+  era una sino dos: (a) ráfagas de timbrado que iOS cortó y dejaron la factura sin su abono —
+  BODEGA EL RANCHITO, reparado recreando el abono con el mismo id que el CFDI ya apuntaba; y
+  (b) bajas de inquilino que borraron los pagos — Lisboa #186-B y TAMESIS DEPA F, reparados
+  archivando el historial de Algodoneros desde los respaldos del 24-sep y 07-ago ($142,680 y
+  $72,500). El contador quedó en cero. **La causa (b) está cerrada en el código** con
+  `FIX BAJA-PROG-SIN-GUARDIA`. Si vuelven a aparecer huérfanas, revisa primero si hubo una baja
+  reciente.
+- **Depósitos que quedan colgados de la propiedad al cambiar de inquilino.** El flujo correcto
+  existe (`registrarSalidaInquilino` archiva el depósito, `confirmarBajaInquilino` lo limpia),
+  pero si la baja falla a medias el depósito se queda bajo el inquilino NUEVO, que nunca lo dio.
+  Pasó con los $41,000 de Lisboa #186-B y los $25,000 de TAMESIS DEPA F. Sin diagnosticar por
+  qué sobrevivió a la limpieza; la hipótesis es un snapshot stale de otro dispositivo
+  reescribiéndolo, pero **no está comprobado**.
 - Arreglo de documento-fósil para **clientes** completo solo a medias.
 - 8 líneas con `const`/`let` heredadas (3999, 4009, 4041, 4042, 13604, 24166, 25486, 25487).
   No rompen nada; emparejarlas solo si Franco lo pide.
