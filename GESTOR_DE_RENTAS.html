@@ -3913,7 +3913,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v121 · 27-oct-2026';
+var APP_VERSION = 'v122 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -8914,6 +8914,22 @@ function _finishLogin(user) {
   history.replaceState({ page: currentPage }, '', '#' + currentPage);
   fbShowStatus(true);
   ofrecerBioRegistro(user);
+  // FIX HEADER-OFFSET-LOGIN (2026-10): hasta aquí el header NO EXISTÍA en pantalla — la app
+  // estaba tapada por loginScreen —, así que todas las mediciones de arranque de
+  // adjustHeaderOffset() (carga, 400ms, 1500ms) midieron un header de altura 0 o inexistente y
+  // no reservaron nada. En Safari no se notaba porque la sesión suele estar lista al cargar; en
+  // la PWA, entrar con Face ID tarda más que esos 1500ms, así que al aparecer la app nadie
+  // volvía a medir y el header se montaba sobre el contenido (tapaba "Mi Portafolio"). Ese fue
+  // el motivo de que el mismo código se viera bien en Safari y mal desde el ícono.
+  // Se mide aquí, que es cuando el header aparece de verdad, y otra vez en diferido para cuando
+  // el primer render ya pintó su contenido definitivo.
+  try {
+    if (typeof adjustHeaderOffset === 'function') {
+      adjustHeaderOffset();
+      setTimeout(adjustHeaderOffset, 250);
+      setTimeout(adjustHeaderOffset, 900);
+    }
+  } catch(eAH) { console.warn('[Layout] adjustHeaderOffset post-login:', eAH.message); }
 
   // Show welcome onboarding for first-time users (per Firebase UID)
   setTimeout(function() {
