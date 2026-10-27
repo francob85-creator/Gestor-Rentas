@@ -136,9 +136,31 @@
     box-shadow: none;
     border-bottom: 1px solid rgba(0,0,0,0.04);
     box-sizing: border-box;
+    /* el efecto glass se devuelve SOLO en iOS — ver la regla @supports de abajo */
     overflow: visible;
     /* FIX SAFE-AREA: respetar área de notch/Dynamic Island del iPhone */
     padding-top: env(safe-area-inset-top);
+  }
+  /* FIX GLASS-SOLO-IOS (2026-10): devuelve el efecto glass del header ÚNICAMENTE en iPhone/iPad.
+     Por qué: con apple-mobile-web-app-status-bar-style en "black-translucent" (que debe quedarse
+     así: ver la nota del meta, tres intentos de cambiarlo y tres regresiones de layout), iOS
+     superpone su barra de estado y pinta encima un velo difuminado. Hasta v107 ese velo no se
+     notaba porque el header llevaba su propio glass y el conjunto se leía como un diseño, no
+     como una mancha. Al quitar el backdrop-filter en v116 — para curar el scroll a saltos — el
+     velo del sistema quedó desnudo y la app se veía mal rematada arriba.
+     Pero aquel scroll a saltos era en la COMPUTADORA: Chrome en Windows calcula el desenfoque a
+     pulso en cada cuadro, mientras que Safari en iOS lo acelera por hardware (es el efecto
+     nativo del sistema) y ahí nunca costó nada. O sea que el efecto solo estorbaba en un sitio
+     y solo hacía falta en el otro.
+     @supports (-webkit-touch-callout: none) es cierto solo en Safari de iOS, así que el glass
+     vuelve donde es gratis y sigue fuera donde era caro. No se toca ni el meta ni una sola
+     medida del layout, de modo que esto NO puede reabrir lo del scroll ni lo del menú inferior. */
+  @supports (-webkit-touch-callout: none) {
+    .header {
+      background: rgba(245, 247, 246, 0.85);
+      -webkit-backdrop-filter: saturate(180%) blur(10px);
+      backdrop-filter: saturate(180%) blur(10px);
+    }
   }
   /* FIX HEADER-MINIMAL: logo sin píldora — solo el texto/SVG con color verde */
   .header .logo {
@@ -3919,7 +3941,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v125 · 27-oct-2026';
+var APP_VERSION = 'v126 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
