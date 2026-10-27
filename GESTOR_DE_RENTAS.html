@@ -100,7 +100,19 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
+    /* FIX VH-IOS (2026-10): aquí estaba la raíz de que el header tapara el contenido al quitar
+       el velo. El diseño es correcto — body fijo con overflow:hidden y .main desplazándose
+       dentro — pero `100vh` en iOS NO es la altura visible: devuelve la pantalla completa, sin
+       descontar las barras del sistema. Con "black-translucent" la app ocupaba toda la pantalla
+       y coincidía; con "default" iOS reserva la barra de estado, así que el body quedaba ~62px
+       MÁS ALTO que lo visible. Ese sobrante hacía que se desplazara la página entera en vez de
+       solo el contenido: .main subía con todo (la bitácora del iPhone lo mostró como
+       mainTop=-62) y su padding-top se iba con él, dejando el contenido debajo del header fijo.
+       `100dvh` sí es la altura visible real. Se declara después de 100vh para que los
+       navegadores que no lo entiendan se queden con el valor anterior (dvh existe desde
+       iOS 15.4 / Chrome 108). Es mejor que vh en TODOS los dispositivos, no solo en éste. */
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     overflow-x: hidden;
     display: flex;
@@ -208,7 +220,9 @@
     background: #24503e;
     padding: 24px 16px;
     display: flex; flex-direction: column; gap: 2px;
+    /* FIX VH-IOS: misma razón que en body — dvh es la altura visible real. */
     height: calc(100vh - 51px);
+    height: calc(100dvh - 51px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -3935,7 +3949,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v129 · 27-oct-2026';
+var APP_VERSION = 'v130 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
