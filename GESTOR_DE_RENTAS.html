@@ -3913,7 +3913,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v122 · 27-oct-2026';
+var APP_VERSION = 'v123 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -26785,6 +26785,33 @@ function adjustHeaderOffset() {
   }
 }
 window.addEventListener('resize', adjustHeaderOffset);
+// FIX HEADER-OFFSET-OBSERVER (2026-10): la cura de raíz del header que tapaba el contenido.
+// El espacio que .main reserva depende de la altura del header, pero el header NO existe en
+// pantalla hasta que se oculta loginScreen — y eso ocurre por TRES caminos distintos:
+// _finishLogin (contraseña/Face ID), la restauración de sesión de subusuario, y checkSession()
+// en el arranque, que es justo el que usa la PWA cuando la sesión sigue viva. Solo el primero
+// medía (v122), así que tapaba o no según si iOS te pedía Face ID: de ahí que fuera intermitente
+// y que en Safari se viera bien y desde el ícono no.
+// Parchear cada camino es frágil — ya se escapó uno — así que en vez de eso se vigila el header:
+// ResizeObserver dispara al empezar a observar y en CADA cambio de altura, incluido el salto de
+// 0 a su altura real cuando la app se revela. Cubre los tres caminos y cualquiera que se agregue
+// después, sin que nadie tenga que acordarse de llamar a nada.
+// Soportado desde Safari 13.1 / iOS 13.4; el try/catch cubre lo anterior, donde siguen operando
+// las llamadas de arranque y de _finishLogin.
+(function(){
+  try {
+    if (typeof ResizeObserver !== 'function') return;
+    var _obsHdr = function() {
+      var h = document.querySelector('.header');
+      if (!h) { setTimeout(_obsHdr, 300); return; } // aún no está en el DOM: reintentar
+      new ResizeObserver(function(){
+        try { adjustHeaderOffset(); } catch(e) {}
+      }).observe(h);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _obsHdr);
+    else _obsHdr();
+  } catch(e) { console.warn('[Layout] ResizeObserver header:', e.message); }
+})();
 // FIX HEADER-OFFSET-INICIAL (2026-10): adjustHeaderOffset() mide la altura REAL del header y
 // reserva ese espacio en .main, pero solo estaba enganchada a 'resize' — o sea, NUNCA corría al
 // abrir la app. Al arrancar, el espacio quedaba en el número fijo del CSS (50px + el inset que
