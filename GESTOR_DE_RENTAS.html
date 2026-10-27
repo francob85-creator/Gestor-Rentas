@@ -3902,7 +3902,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v116 · 27-oct-2026';
+var APP_VERSION = 'v117 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -27162,7 +27162,16 @@ if (document.readyState === 'loading') {
   var iconB64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(iconSvg)));
 
   // ── Apple touch icon ─────────────────────────────────────
-  document.getElementById('pwa-apple-icon').href = iconB64;
+  // FIX ICONO-PWA-IOS (2026-10): aquí se sobrescribía el apple-touch-icon con iconB64, que es un
+  // SVG. iOS NO admite SVG para el icono de pantalla de inicio — solo PNG — así que al agregar la
+  // PWA se quedaba sin icono y Safari ponía el genérico (fondo negro con la inicial).
+  // El resultado dependía de una carrera: si el usuario agregaba la app ANTES de que este
+  // JavaScript corriera, iOS alcanzaba a leer el PNG del <head> y el logo salía bien; si ya había
+  // corrido, leía el SVG y no lo entendía. De ahí que a Franco le saliera el logo la primera vez
+  // y la G genérica al reinstalarla (26-oct-2026).
+  // La cura es no tocarlo: el <link rel="apple-touch-icon"> del HTML ya trae el logo en PNG de
+  // 180x180, que es exactamente lo que iOS espera. iconB64 se sigue usando para el manifest
+  // (Android/Chrome sí admiten SVG), que es para lo que se generó.
 
   // ── Inline manifest via Blob URL ─────────────────────────
   var manifest = {
