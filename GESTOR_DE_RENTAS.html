@@ -1781,7 +1781,7 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
       <input type="text" id="reg-empresa" placeholder="Nombre de tu empresa (opcional)" style="width:100%" />
       <input type="email" id="reg-email" placeholder="Correo electrónico" autocomplete="email" style="width:100%" />
       <input type="tel" id="reg-tel" placeholder="Teléfono (10 dígitos)" style="width:100%" />
-      <input type="password" id="reg-pass" placeholder="Contraseña (mínimo 6 caracteres)" style="width:100%" />
+      <input type="password" id="reg-pass" autocomplete="new-password" placeholder="Contraseña (mínimo 6 caracteres)" style="width:100%" />
       <select id="reg-plan" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-bottom:8px;background:var(--surface);color:var(--text)">
         <option value="basico">Básico — $199/mes (hasta 10 propiedades)</option>
         <option value="pro" selected>Pro — $499/mes (hasta 50 propiedades)</option>
@@ -1822,7 +1822,7 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
         </div>
         <input type="text" id="forgot-sub-code" placeholder="Código de 8 dígitos" maxlength="8" style="text-align:center;letter-spacing:3px;font-size:18px;font-weight:600"
           onkeydown="if(event.key==='Enter') doSubuserRecover()" />
-        <input type="password" id="forgot-sub-newpass" placeholder="Nueva contraseña (mín. 4 caracteres)" style="margin-top:8px"
+        <input type="password" id="forgot-sub-newpass" autocomplete="new-password" placeholder="Nueva contraseña (mín. 4 caracteres)" style="margin-top:8px"
           onkeydown="if(event.key==='Enter') doSubuserRecover()" />
         <button class="login-btn" data-action="doSubuserRecover" style="margin-top:10px">Cambiar contraseña</button>
         <div style="margin-top:12px;font-size:11px;color:var(--text3);text-align:center">¿No tienes código? Pide al titular que te genere uno desde su cuenta.</div>
@@ -2570,8 +2570,8 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
           <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);margin-bottom:12px">🔑 Credenciales FiscalAPI (Admin)</div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">Obtén tu API Key y Tenant en <a href="https://fiscalapi.com" target="_blank" style="color:var(--accent)">fiscalapi.com</a>. Prueba gratis 90 días.</div>
           <div class="g2" style="margin-bottom:10px">
-            <div><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">API Key</label><input id="cfg-fiscal-apikey" type="password" placeholder="sk_live_xxxx..." style="width:100%;font-size:12px" /></div>
-            <div><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">Tenant Key</label><input id="cfg-fiscal-tenant" type="password" placeholder="tu-tenant-key..." style="width:100%;font-size:12px" /></div>
+            <div><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">API Key</label><input id="cfg-fiscal-apikey" type="password" autocomplete="off" placeholder="sk_live_xxxx..." style="width:100%;font-size:12px" /></div>
+            <div><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">Tenant Key</label><input id="cfg-fiscal-tenant" type="password" autocomplete="off" placeholder="tu-tenant-key..." style="width:100%;font-size:12px" /></div>
           </div>
           <div style="margin-bottom:10px"><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">Ambiente</label>
             <select id="cfg-fiscal-env" style="font-size:12px;padding:6px 10px"><option value="test">🧪 Pruebas (test.fiscalapi.com)</option><option value="live">🟢 Producción (live.fiscalapi.com)</option></select>
@@ -2641,7 +2641,7 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
             <div><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">Archivo .key</label>
               <label class="btn btn-ghost" style="width:100%;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px"><span id="ed-csd-key-label">📂 Seleccionar .key</span><input type="file" accept=".key" style="display:none" onchange="cargarCSDEmisor(this,'key')" /></label></div>
           </div>
-          <div style="margin-bottom:10px"><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">Contraseña del CSD</label><input id="ed-csd-password" type="password" placeholder="Contraseña de la llave privada" style="width:100%;font-size:12px" /></div>
+          <div style="margin-bottom:10px"><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">Contraseña del CSD</label><input id="ed-csd-password" type="password" autocomplete="off" placeholder="Contraseña de la llave privada" style="width:100%;font-size:12px" /></div>
           <div id="ed-csd-status" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
           <div style="margin-bottom:10px"><label style="font-size:11px;display:block;margin-bottom:4px;color:var(--text2)">🖼️ Logo para facturas (opcional)</label>
             <div style="display:flex;gap:8px;align-items:center">
@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v114 · 27-oct-2026';
+var APP_VERSION = 'v115 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
