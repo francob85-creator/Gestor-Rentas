@@ -3014,11 +3014,11 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
       </div>
       <div class="form-group">
         <label>📆 Inicio de contrato</label>
-        <input id="r-inicio" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" oninput="_onDateInput(this);onClienteSelectChange();" />
+        <input id="r-inicio" type="date" onchange="onClienteSelectChange();" />
       </div>
       <div class="form-group">
         <label>🏁 Fin de contrato</label>
-        <input id="r-fin" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" oninput="_onDateInput(this)" />
+        <input id="r-fin" type="date" />
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Si vence y sigue rentando se renueva automáticamente</div>
       </div>
       <div class="form-group">
@@ -3027,7 +3027,7 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
       </div>
       <div class="form-group">
         <label>Fecha próximo incremento</label>
-        <input id="r-incremento-fecha" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" oninput="_onDateInput(this)" />
+        <input id="r-incremento-fecha" type="date" />
         <!-- FIX INCREMENTOS-20D-V3: botón para aplicar incremento manual desde el modal
              de edición. Visible siempre que la propiedad esté rentada. El modal de
              incremento permite definir % o monto directo en ese momento. -->
@@ -3335,7 +3335,7 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
       </div>
       <div class="form-group">
         <label>Fecha del depósito</label>
-        <input id="c-deposito-fecha" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10"  oninput="_onDateInput(this)" />
+        <input id="c-deposito-fecha" type="date" />
       </div>
 
       <!-- ── Deuda existente ── -->
@@ -3733,7 +3733,7 @@ window.addEventListener('unhandledrejection', function(e){ try { var r = e.reaso
       </div>
       <div class="form-group">
         <label>Fecha de vencimiento</label>
-        <input id="pd-vencimiento" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10"  oninput="_onDateInput(this)" />
+        <input id="pd-vencimiento" type="date" />
       </div>
       <div class="form-group" style="display:flex;align-items:center;gap:10px;padding-top:20px">
         <input id="pd-pagado" type="checkbox" style="width:18px;height:18px;accent-color:var(--success)" />
@@ -3894,7 +3894,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v113 · 27-oct-2026';
+var APP_VERSION = 'v114 · 27-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -11960,6 +11960,13 @@ function _setDateVal(id, iso) {
   var el = document.getElementById(id);
   if (!el) return;
   el.dataset.iso = iso || '';
+  // FIX SETDATE-CALENDARIO (2026-10): esta función convertía SIEMPRE a DD/MM/AAAA, incluso para
+  // los campos type="date". Un input de fecha RECHAZA ese formato y se queda VACÍO, así que
+  // pre-llenar uno de calendario con _setDateVal perdía el valor en silencio. Pasaba ya hoy con
+  // modal-baja-fecha (la fecha sugerida al programar una baja salía en blanco), y habría roto
+  // r-inicio, r-fin, r-incremento-fecha, c-deposito-fecha, pd-vencimiento y g-fecha al pasarlos
+  // a calendario. _getDateVal ya distinguía el tipo al LEER; esto deja simétrica la escritura.
+  if (el.type === 'date') { el.value = iso || ''; return; }
   el.value = _isoToDisplay(iso || '');
 }
 function _getDateVal(id) {
@@ -28265,7 +28272,7 @@ async function _scanRecomprimir(paginas, quality, maxDim) {
       </div>
       <div class="form-group">
         <label>Fecha</label>
-        <input id="g-fecha" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10"  oninput="_onDateInput(this)" />
+        <input id="g-fecha" type="date" />
       </div>
       <div class="form-group">
         <label>Forma de pago</label>
