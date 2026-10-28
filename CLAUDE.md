@@ -202,7 +202,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX LP-STANDALONE-FALSO`, `FIX BIO-SIN-SYNC`, `FIX FOREGROUND-RECONEXION`,
 `FIX PARPADEO-TARJETAS`, `FIX BAJA-PROG-SIN-GUARDIA`, `FIX SETDATE-CALENDARIO`,
 `FIX CHROME-PASSWORD-PROMPT`, `FIX SCROLL-BACKDROP`, `FIX NAV-OFFSET-REAL`,
-`FIX HEADER-OFFSET-OBSERVER`, `FIX VH-IOS`.
+`FIX HEADER-OFFSET-OBSERVER`, `FIX VH-IOS`, `FIX HISTORIAL-INQUILINO-ANTERIOR`,
+`FIX VENCIDO-SOBRE-ESCRIBE-STATUS`, `FIX SONDA-DIA-COBRO`.
 
 ---
 
@@ -459,6 +460,85 @@ un bug viejo del login con huella. Franco tenía razón al decir "no reviertas".
 Revertir compra tiempo, no explica nada. Al hacerlo, dilo con esas palabras: *"revierto por
 precaución, todavía no sé la causa"*. Y no des por culpable al último cambio solo por ser el
 último.
+
+---
+
+# LA TERCERA LECCIÓN: LA MISMA REGLA ESCRITA DOS VECES
+
+El 28-oct-2026 Franco preguntó por qué un inquilino al corriente aparecía debiendo $477 en la
+pantalla de Inicio. Salieron **tres causas raíz**, y las tres eran la misma enfermedad:
+
+> La regla "cuánto se espera de esta propiedad este mes" está escrita a mano en cada pantalla,
+> y las copias se desalinean en un detalle.
+
+Ya había un `FIX MONTO-VIGENTE` (2026-09) en el código diciendo exactamente eso, con cuatro
+casos previos listados. Este fue el quinto, sexto y séptimo. **Cuando una regla de negocio se
+repite, no se repara la copia que se queja: se busca cuál de las dos tiene razón y se deja una
+sola.**
+
+Las tres de ese día:
+
+1. **`FIX HISTORIAL-INQUILINO-ANTERIOR`** — `historialMonto` es un timeline de "qué renta valía
+   esta propiedad desde tal fecha". Al dar de baja a un inquilino sus entradas se quedaban
+   vigentes **para siempre**, y le ganaban a `renta.monto` porque su última entrada ya tenía
+   fecha pasada. El inquilino nuevo entraba con otra renta y el sistema seguía esperando la del
+   anterior. Cura: leer el timeline con la fecha del contrato vigente como piso. No se borra
+   nada —el pasado no se toca—, solo deja de aplicarse a un contrato al que nunca perteneció.
+2. **`FIX VENCIDO-SOBRE-ESCRIBE-STATUS`** — el dashboard hacía
+   `max(saldoVencido, faltanteCalculado)`: cuando su propia cuenta salía más alta, **le ganaba a
+   `getStatusRenta`**. Eso viola la regla de la casa. Y el `max` no aportaba nada legítimo:
+   con `plazoVencio` en true el mes en curso ya está dentro de `totalVencido`, así que solo
+   podía inflar. Lo único que destapaba eran desacuerdos entre las dos cuentas.
+3. **`FIX SONDA-DIA-COBRO`** — `_montoEfectivoEnMes` preguntaba al timeline con el **día 1** del
+   mes y `getStatusRenta` con el **día de cobro**. Si la renta cambiaba a media del mes, ese mes
+   tenía dos rentas distintas según quién preguntara.
+
+## Un desacuerdo entre pantallas es un bug, no una cifra que publicar
+
+El `max` del punto 2 convertía una discrepancia interna en **una acusación de deuda contra un
+inquilino que estaba al corriente**. Si dos caminos del sistema no coinciden, el número alto no
+es "el conservador": es la señal de que uno de los dos está mal. Arréglalo en su causa; no lo
+muestres como adeudo.
+
+Corolario: `getStatusRenta` es la única fuente de verdad para AL DÍA / ATRASADO, y eso significa
+que **ningún otro camino puede reportar más deuda que ella**. Si alguno cree que debería, lo que
+hay es un bug que encontrar, no un `max` que poner.
+
+## Correr el código real contra un respaldo zanja la discusión
+
+Lo que resolvió el caso en una tarde fue un arnés de unas 40 líneas: extraer `getStatusRenta` y
+sus dependencias **del archivo de producción** —sin copiarlas a mano— y correrlas en Node contra
+el respaldo que Franco exportó. Eso permitió, sin tocar producción:
+
+- reproducir el $476.67 exacto y ver que el total de las 7 propiedades daba $78,991.67 contra
+  los $78,992 de la pantalla — prueba de que la réplica era fiel y no una aproximación;
+- **medir el alcance antes de editar**: solo 3 de 47 propiedades tenían entradas anteriores a su
+  contrato, y 2 de ellas eran inofensivas;
+- correr **código viejo contra código nuevo** sobre los mismos datos y comparar 783 meses de 47
+  propiedades, para demostrar que cambiaban 3 meses y ni uno más;
+- **adelantar el reloj** y comprobar que el arreglo aguanta en noviembre y diciembre.
+
+Si tienes un respaldo y la función, puedes probar antes de publicar. Hazlo siempre que el cambio
+toque dinero. Extraer la función del archivo (no reescribirla) es lo que hace válida la prueba:
+una copia a mano prueba tu copia, no el código que corre.
+
+## Prueba también el arreglo "obvio" de datos
+
+Franco confirmó que la renta pactada eran $20,000 y lo natural era anotarlo en el historial. El
+arnés mostró que **esa entrada habría reintroducido el bug**: fechada el día 3, quedaba después
+del día 1 con que el Inicio sondeaba, y la pantalla volvía a leer la renta vieja. Lo correcto
+era no escribir nada — el contrato nuevo no ha tenido cambios de renta, y un historial vacío es
+el registro exacto de eso. Anotar el cambio habría inventado un evento que nunca ocurrió.
+
+**Antes de mandarle a Franco un script que toca datos, córrelo contra el respaldo.**
+
+## Cuando alinees dos copias, copia hasta los defectos
+
+Al alinear `_montoEfectivoEnMes` con `getStatusRenta` se copió su derivación del día de cobro
+**verbatim**: misma herencia del cliente, mismo mediodía, mismo desbordamiento si el día no
+existe en ese mes. Mejorar un detalle "de paso" en una sola de las dos las vuelve a separar —
+que es el bug que estabas curando. Si un defecto compartido merece arreglo, es otra tarea y se
+arregla en los dos lados a la vez.
 
 ---
 
