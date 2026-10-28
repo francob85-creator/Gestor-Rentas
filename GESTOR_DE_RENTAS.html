@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v131 · 27-oct-2026';
+var APP_VERSION = 'v132 · 28-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12416,15 +12416,56 @@ function _detectarMontoPagadoConsistente(renta) {
 
 // Función pública: monto efectivo de la renta en un mes específico.
 // Aplica historialMonto si existe; sino infiere del histórico de pagos del inquilino.
+// FIX HISTORIAL-INQUILINO-ANTERIOR (2026-10): la renta de un inquilino ANTERIOR no
+// aplica al contrato vigente. historialMonto es un timeline de "qué renta valía esta
+// propiedad desde tal fecha", y al dar de baja a un inquilino sus entradas se quedaban
+// ahí, vigentes para siempre. El inquilino nuevo entra con otra renta en renta.monto,
+// pero el timeline seguía ganando porque su última entrada ya tenía fecha pasada.
+// Caso real: Lisboa #186-B. Algodoneros pagaba $20,500; Fernando Campa entró el
+// 03-oct-2026 en $20,000. Inicio esperaba 20,500 × factor = $19,543.33, la factura fue
+// por 20,000 × factor = $19,066.66, y la diferencia de $476.67 salía como "vencido"
+// mientras la ficha de la propiedad —que congela lo esperado en el neto de la factura
+// emitida, FIX PASADO-NO-SE-TOCA— decía AL DÍA. Dos pantallas, dos respuestas.
+//
+// La cura es leer el timeline con la fecha del contrato vigente como piso. NO se borra
+// nada: el pasado no se toca, solo se deja de aplicar a un contrato al que nunca
+// perteneció. Si no hay renta.inicio explícito no se filtra nada (sin esa fecha no hay
+// con qué decidir, y adivinar sería peor). Se usa desde los DOS lugares que arman el
+// timeline — _montoEfectivoEnMes y getStatusRenta — porque si solo uno lo aplicara
+// volverían a contradecirse, que es exactamente el bug que esto cura.
+var _histVigAvisado = {};
+function _historialMontoVigente(renta) {
+  var _h = (renta && renta.historialMonto) || [];
+  if (!_h.length) return _h;
+  var _ini = renta.inicio ? String(renta.inicio).slice(0, 10) : '';
+  if (!_ini) return _h;
+  var _vig = [];
+  for (var _i = 0; _i < _h.length; _i++) {
+    var _f = String(_h[_i].fechaAplic || _h[_i].fecha || '').slice(0, 10);
+    if (!_f || _f >= _ini) _vig.push(_h[_i]);
+  }
+  if (_vig.length === _h.length) return _h;
+  // Rastro visible desde el celular (la bitácora solo captura warn/error): si esta cura
+  // deja de aplicarse algún día, su silencio se nota. Una vez por propiedad por sesión.
+  if (!_histVigAvisado[renta.id]) {
+    _histVigAvisado[renta.id] = true;
+    console.warn('[HistorialMonto] ' + (renta.nombre || renta.id) + ': ' +
+      (_h.length - _vig.length) + ' cambio(s) de renta anteriores al contrato vigente (' +
+      _ini + ') no se aplican — informativo, no es un error.');
+  }
+  return _vig;
+}
+
 function _montoEfectivoEnMes(renta, mesStr) {
   var montoBase = Number(renta.monto) || 0;
   var dueDate = new Date(mesStr + '-01T12:00:00');
   if (isNaN(dueDate.getTime())) return montoBase;
 
   // === CASO 1: hay historialMonto explícito → es la fuente de verdad ===
-  if (renta.historialMonto && renta.historialMonto.length) {
+  var _histVig = _historialMontoVigente(renta);
+  if (_histVig.length) {
     var _seen = {};
-    var _byFecha = renta.historialMonto.slice().sort(function(a,b){ return a.fecha < b.fecha ? 1 : -1; });
+    var _byFecha = _histVig.slice().sort(function(a,b){ return a.fecha < b.fecha ? 1 : -1; });
     var _dedup = [];
     _byFecha.forEach(function(h) {
       var key = h.fechaAplic || h.fecha;
@@ -12525,11 +12566,12 @@ function getStatusRenta(renta) {
   // ── Build monto timeline from historialMonto ──
   // Deduplicate entries with same fechaAplic — keep most recent (last saved)
   var _montoTimeline = [];
-  if (renta.historialMonto && renta.historialMonto.length) {
+  var _histVigSR = _historialMontoVigente(renta);
+  if (_histVigSR.length) {
     var _deduped = [];
     var _seenAplic = {};
     // Process newest first (by fecha), dedupe by fechaAplic, then sort by fechaAplic ascending
-    var _byFecha = renta.historialMonto.slice().sort(function(a,b){ return a.fecha < b.fecha ? 1 : -1; });
+    var _byFecha = _histVigSR.slice().sort(function(a,b){ return a.fecha < b.fecha ? 1 : -1; });
     _byFecha.forEach(function(h) {
       var key = h.fechaAplic || h.fecha;
       if (!_seenAplic[key]) { _seenAplic[key] = true; _deduped.push(h); }
@@ -13765,11 +13807,24 @@ function renderDashboard() {
           //   • _vencidoEsteMes = faltante del mes ACTUAL si su plazo ya venció (en neto,
           //     capped al montoNeto del mes para no inflar).
           //   • _vencidoAnt = todo lo demás de la deuda total vencida.
-          //   • _deudaTotal = max(saldoVenc reportado por getStatusRenta, faltanteMesVencido)
-          //     para cubrir tanto la visión histórica como la del mes en curso.
+          //   • _deudaTotal = lo que reporta getStatusRenta, y nada más.
+          // FIX VENCIDO-SOBRE-ESCRIBE-STATUS (2026-10): antes era
+          // max(_saldoVenc, _faltanteMesVencido), y ese max dejaba que el dashboard le
+          // GANARA a getStatusRenta cuando su propia cuenta salía más alta. Pero
+          // getStatusRenta es la única fuente de verdad para AL DÍA / ATRASADO: si ella
+          // dice que no se debe, el Inicio no puede listar la propiedad como vencida.
+          // El max no aportaba nada legítimo: cuando plazoVencio es true, el mes en curso
+          // YA está dentro de totalVencido (ver la caminata de meses: un mes entra a
+          // totalVencido en cuanto graceDate <= hoy, que es la misma condición), así que
+          // el término extra solo podía inflar. Lo que destapaba eran DESACUERDOS entre
+          // las dos cuentas — y un desacuerdo es un bug que hay que arreglar en su causa,
+          // no publicarlo como deuda. Así salía el fantasma de $476.67 de Lisboa #186-B.
+          // _faltanteMesVencido se conserva para repartir la deuda entre "del mes" y
+          // "anteriores", pero topado por lo que getStatusRenta reconoce.
+          // OJO: _faltante y saldoMesSel NO se tocan — otros indicadores del mes los usan.
           var _plazoMesVencio = !!st.plazoVencio;
-          var _faltanteMesVencido = _plazoMesVencio && _faltante >= 1 ? Math.min(_faltante, montoNeto) : 0;
-          var _deudaTotal = Math.max(_saldoVenc, _faltanteMesVencido);
+          var _faltanteMesVencido = _plazoMesVencio && _faltante >= 1 ? Math.min(_faltante, montoNeto, _saldoVenc) : 0;
+          var _deudaTotal = _saldoVenc;
           if (_deudaTotal >= 1) {
             var _vencidoEsteMes = _faltanteMesVencido;
             var _vencidoAnt = Math.max(0, _deudaTotal - _vencidoEsteMes);
