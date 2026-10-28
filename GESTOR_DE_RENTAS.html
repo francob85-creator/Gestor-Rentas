@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v132 · 28-oct-2026';
+var APP_VERSION = 'v133 · 28-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12458,7 +12458,23 @@ function _historialMontoVigente(renta) {
 
 function _montoEfectivoEnMes(renta, mesStr) {
   var montoBase = Number(renta.monto) || 0;
-  var dueDate = new Date(mesStr + '-01T12:00:00');
+  // FIX SONDA-DIA-COBRO (2026-10): esta función sondeaba el timeline con el DÍA 1 del mes
+  // mientras getStatusRenta lo sondea con el DÍA DE COBRO. Cuando una renta cambia a media
+  // del mes y el cobro cae después del cambio, ese mes quedaba con DOS rentas distintas: el
+  // Inicio leía la vieja y la ficha la nueva. Medido en los datos reales: Bodega Sarabia
+  // jun-2026 ($23,100 vs $24,200), Centenario 978-2 abr-2026 ($48,000 vs $45,000) y Bodega
+  // Bravo 1906 jun-2026 ($34,800 vs $36,500).
+  // El día de cobro es la fecha correcta —es cuando se genera el cobro de ese mes—, así que
+  // se alinea ESTA con getStatusRenta, que es la fuente de verdad, y no al revés.
+  // Se copia su derivación VERBATIM (misma herencia del cliente, mismo mediodía, mismo
+  // desbordamiento de fin de mes si el día no existe): si una de las dos "corrigiera" un
+  // detalle por su cuenta, volverían a separarse, que es justo el bug que esto cura.
+  var _sY = Number(String(mesStr).slice(0, 4));
+  var _sM = Number(String(mesStr).slice(5, 7));
+  if (!_sY || !_sM) return montoBase;
+  var _cliSonda = renta.clienteId ? (_getCliMap()[renta.clienteId] || null) : null;
+  var _diaSonda = Number(renta.dia || (_cliSonda && _cliSonda.dia) || 1);
+  var dueDate = new Date(_sY, _sM - 1, _diaSonda, 12, 0, 0);
   if (isNaN(dueDate.getTime())) return montoBase;
 
   // === CASO 1: hay historialMonto explícito → es la fuente de verdad ===
