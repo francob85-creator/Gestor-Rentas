@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v133 · 28-oct-2026';
+var APP_VERSION = 'v134 · 28-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -13412,7 +13412,19 @@ function _computeFPData(visibles, rentadas) {
       fpData[fpId].cobrado += _montoRenta > 0 ? Math.min(_cobEstaRenta, _montoRenta) : _cobEstaRenta;
       var _cobCapado = _montoRenta > 0 ? Math.min(_cobEstaRenta, _montoRenta) : _cobEstaRenta;
       var _pendEstaRenta = _montoRenta - _cobCapado;
-      if (_pendEstaRenta > 0.01) {
+      // FIX RESIDUO-PENDIENTE (2026-10): el umbral era un centavo, y eso dejaba entrar
+      // residuos de redondeo de IVA/retenciones. Caso real: ALEJANDRAS DEPA CASA (Coppel),
+      // con 6 meses pagados por adelantado. El campo `monto` del abono guarda el neto de la
+      // configuración (24,004.83) y el pago registrado guarda el neto recalculado del
+      // desglose (sub + IVA − retenciones = 24,004.82): un centavo de diferencia. Peor aún,
+      // 24004.83 − 24004.82 en binario da 0.010000000002037, que es MAYOR que 0.01 por un
+      // pelo, así que pasaba el filtro. La propiedad aparecía en "Pendientes por pagar"
+      // mostrando "$0 · 100% cobrado", e inflaba el contador de propiedades con cobro
+      // incompleto, mientras su ficha decía A FAVOR con 2 meses adelantados.
+      // La regla del proyecto es clara y ya estaba escrita en otros lados: por debajo de
+      // $1 peso es cero, tanto en morosidad como en saldo a favor. Se usa el mismo >= 1 que
+      // getStatusRenta, en vez de un epsilon propio que además era vulnerable al binario.
+      if (_pendEstaRenta >= 1) {
         fpData[fpId].propiesPendientes.push({
           propId: r.id,
           nombre: r.nombre,
@@ -14113,11 +14125,12 @@ function renderDashboard() {
             // Bloque inferior: cobrado/pendiente/+meses ant
             // FIX COBRANZA-CONSOLIDADO: cobrado clickeable → abre detalle de quién pagó (verAbonosFP)
             var _detailHtml = '';
-            if (fp.cobrado > 0 && pend > 0.01) {
+            // FIX RESIDUO-PENDIENTE: mismo umbral de $1 que en _computeFPData.
+            if (fp.cobrado > 0 && pend >= 1) {
               _detailHtml = '<div data-action="verAbonosFP" data-arg="' + fpIdSafe + '" data-stop="1" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:600;cursor:pointer">💰 ' + fmt(fp.cobrado) + ' <span style="font-weight:400;color:var(--text3);font-size:11px">cobrado</span></div>'
                 + '<div style="width:1px;height:14px;background:var(--border)"></div>'
                 + '<div data-action="verPendientesFP" data-arg="' + fpIdSafe + '" data-stop="1" style="font-size:12px;color:var(--danger);font-weight:600;cursor:pointer">' + fmt(pend) + ' <span style="font-weight:400;color:var(--text3);font-size:11px">pendiente</span></div>';
-            } else if (pend > 0.01) {
+            } else if (pend >= 1) {
               _detailHtml = '<div data-action="verPendientesFP" data-arg="' + fpIdSafe + '" data-stop="1" style="font-size:12px;color:var(--danger);font-weight:600;cursor:pointer">' + fmt(pend) + ' <span style="font-weight:400;color:var(--text3);font-size:11px">pendiente todo</span></div>';
             } else {
               _detailHtml = '<div data-action="verAbonosFP" data-arg="' + fpIdSafe + '" data-stop="1" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:600;cursor:pointer">💰 ' + fmt(fp.cobrado) + ' <span style="font-weight:400;color:var(--text3);font-size:11px">cobrado todo</span></div>';
@@ -21930,7 +21943,8 @@ function verTotalAIngresar() {
       var pid = (p.propId || '').replace(/'/g, "\\'");
       var pct = p.monto > 0 ? Math.round(p.cobrado / p.monto * 100) : 100;
       var _statusBadge;
-      if (p.pendiente > 0.01) {
+      // FIX RESIDUO-PENDIENTE: mismo umbral de $1 que en _computeFPData.
+      if (p.pendiente >= 1) {
         _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;margin-left:6px">Pendiente ' + fmt(p.pendiente) + '</span>';
       } else {
         _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#dcfce7;color:#166534;font-size:10px;font-weight:700;margin-left:6px">✓ Cobrado</span>';
@@ -22065,7 +22079,8 @@ function verEsperadoCobranza() {
     html += '<div style="max-height:55vh;overflow-y:auto">';
     todasProps.forEach(function(p) {
       var _statusBadge = '';
-      if (p.pendiente > 0.01) {
+      // FIX RESIDUO-PENDIENTE: mismo umbral de $1 que en _computeFPData.
+      if (p.pendiente >= 1) {
         _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;margin-left:6px">Pendiente ' + fmt(p.pendiente) + '</span>';
       } else {
         _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#dcfce7;color:#166534;font-size:10px;font-weight:700;margin-left:6px">✓ Cobrado</span>';
