@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v146 · 30-oct-2026';
+var APP_VERSION = 'v147 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -22367,10 +22367,33 @@ function verCobrosDelMes() {
     html = '<div style="text-align:center;padding:24px;color:var(--text3)">No se han registrado cobros para este mes.</div>';
   } else {
     var total = allAbonos.reduce(function(s,a){ return s + Number(a.monto); }, 0);
-    html += '<div style="background:var(--success-light);border:1px solid rgba(22,163,74,0.2);border-radius:10px;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">';
-    html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--success);font-weight:600">Cobrado para las rentas de ' + _mesLbl + '</div>';
+    // FIX COBRADO-NO-CUADRA (2026-10): la tarjeta decía $1,020,273 y este modal $1,035,773, y
+    // Franco lo cachó. Los dos números son correctos, miden cosas distintas: la tarjeta TOPA
+    // cada propiedad en su renta del mes (_computeFPData usa Math.min), porque no se puede
+    // cobrar el 200% de una renta y la barra no debe pasarse del 100%; este modal suma los
+    // pagos tal cual llegaron. La diferencia de hoy son los dos pagos de octubre de TAMESIS
+    // DEPA B: el inquilino que se fue pagó el mes completo y el que entró también, $31,000
+    // contra una renta de $15,500. Dinero real, pero no es renta de octubre cobrada dos veces.
+    // En vez de forzarlos a ser iguales —que escondería el excedente o descuadraría la lista—
+    // el modal ahora los reconcilia: el total grande sigue siendo la suma de lo que lista, y
+    // debajo se desglosa cuánto corresponde a la renta del mes (el número de la tarjeta) y
+    // cuánto se recibió de más. Mismo criterio que "Entró a caja" y sus dos sangrados.
+    var _cobradoTarjeta = 0;
+    Object.values(window._dashFPData).forEach(function(fp) { _cobradoTarjeta += Number(fp.cobrado) || 0; });
+    var _excedente = Math.round((total - _cobradoTarjeta) * 100) / 100;
+    html += '<div style="background:var(--success-light);border:1px solid rgba(22,163,74,0.2);border-radius:10px;padding:14px;margin-bottom:8px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--success);font-weight:600">Recibido para las rentas de ' + _mesLbl + '</div>';
     html += '<div style="font-size:10px;color:var(--text3);margin-top:1px">' + allAbonos.length + ' pago' + (allAbonos.length !== 1 ? 's' : '') + ' aplicados a este mes</div></div>';
     html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:22px;font-weight:800;color:var(--success)">' + fmt(total) + '</div></div>';
+    if (_excedente >= 1) {
+      html += '<div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(22,163,74,0.25);font-size:11.5px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="color:var(--text2)">✅ Aplicado a la renta del mes</span><b style="font-family:Inter,sans-serif;font-variant-numeric:tabular-nums;color:var(--success)">' + fmt(_cobradoTarjeta) + '</b></div>';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text3)">✨ Recibido por encima de la renta</span><b style="font-family:Inter,sans-serif;font-variant-numeric:tabular-nums;color:var(--text2)">' + fmt(_excedente) + '</b></div>';
+      html += '<div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.4">El primero es el que aparece en la tarjeta de Cobranza: una propiedad no puede aportar más que su propia renta del mes.</div>';
+      html += '</div>';
+    }
+    html += '</div>';
     // Nota aclaratoria
     html += '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:0 4px;line-height:1.4">💡 Incluye pagos hechos en cualquier fecha (incluso adelantos) que aplican a la renta de este mes.</div>';
 
