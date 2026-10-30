@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v147 · 30-oct-2026';
+var APP_VERSION = 'v148 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14390,12 +14390,12 @@ function renderDashboard() {
               <div style="font-size:15px;font-weight:800;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(totalCobradoNeto)}</div>
               <div style="font-size:12px;font-weight:700;color:var(--success)">${_pctCobradoBar}% ›</div>
             </div>
-            <div data-action="verPendientesTotal" style="cursor:pointer;min-width:0">
+            <div data-action="verPendientesTotal" data-arg="en-plazo" style="cursor:pointer;min-width:0">
               <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#b45309">● En plazo</div>
               <div style="font-size:15px;font-weight:800;color:#b45309;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(_enPlazoMes)}</div>
               <div style="font-size:12px;font-weight:700;color:#b45309">${_pctEnPlazoBar}% ›</div>
             </div>
-            <div data-action="verVencidoDelMes" style="cursor:pointer;min-width:0">
+            <div data-action="verPendientesTotal" data-arg="vencido" style="cursor:pointer;min-width:0">
               <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--danger)">● Vencido</div>
               <div style="font-size:15px;font-weight:800;color:var(--danger);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(vencidoDelMes)}</div>
               <div style="font-size:12px;font-weight:700;color:var(--danger)">${_pctVencidoBar}% ›</div>
@@ -21817,9 +21817,18 @@ function _buildVencidoModalHtml(props, titulo, subtitulo) {
 
 // FIX PENDIENTES-CLICKEABLE: muestra TODAS las propiedades con cobro incompleto
 // del mes (esperado - cobrado > 0). Combina pendientes de todas las formas de pago
-// y marca cuáles ya están vencidas (saldoVencido >= 1, coherente con getStatusRenta)
-// vs cuáles aún dentro del plazo.
-function verPendientesTotal() {
+// y marca cuáles ya están vencidas (según window._propVencidoDelMes, la misma lista con la
+// que la tarjeta arma su número) vs cuáles aún dentro del plazo. Admite filtro.
+function verPendientesTotal(filtro) {
+  // FIX PENDIENTES-FILTRO (2026-10): las columnas "En plazo" y "Vencido" de Cobranza abrían
+  // listas que no correspondían a su número. "En plazo" llamaba a esta función sin filtro, así
+  // que mostraba TODO lo pendiente —incluidas las vencidas—, justo lo contrario de lo que dice.
+  // Y "Vencido" iba a otra función con una lista mucho más pobre: sólo nombre, inquilino y
+  // monto. Franco pidió el formato de ésta para las dos.
+  // Ahora las dos abren esta misma vista, filtrada: una sola lista que mantener, y cada número
+  // abre exactamente lo suyo. El despachador pasa el EVENTO como primer argumento cuando el
+  // elemento no trae data-arg, así que se descarta lo que no sea texto.
+  if (typeof filtro !== 'string') filtro = '';
   if (!window._dashFPData) return;
   // Combinar propiesPendientes de todas las formas de pago
   var allPendientes = [];
@@ -21833,17 +21842,18 @@ function verPendientesTotal() {
     });
   });
 
-  // Para cada pendiente, verificar si ya está vencido (consultar getStatusRenta)
-  // FIX UMBRAL-VENCIDO-V2: alinear con getStatusRenta (que usa saldoVencido < 1 = al-dia).
-  // Una propiedad que debe menos de $1 (centavos por redondeo de IVA/retenciones) NO debe
-  // marcarse como vencida en el desglose si en la página de propiedad aparece como al-día.
-  allPendientes.forEach(function(p) {
-    var renta = _getRentaMap()[p.propId];
-    if (renta) {
-      var st = getStatusRenta(renta);
-      p._vencido = st && st.saldoVencido >= 1;
-    }
-  });
+  // Marcar cuáles ya vencieron. Esto NO se vuelve a calcular aquí: se lee de
+  // window._propVencidoDelMes, que es la MISMA lista con la que la tarjeta arma su número de
+  // "Vencido". Antes se preguntaba a getStatusRenta por saldoVencido, que mide otra cosa:
+  // incluye la deuda de MESES PASADOS. Medido contra el respaldo del 30-oct: hoy los dos
+  // criterios coinciden (5 y 5), pero simulando el 3-nov divergen las 5 — la tarjeta diría
+  // "Vencido $0" y el botón abriría 5 propiedades, y "En plazo" tendría todo el dinero con la
+  // lista vacía. Una sola copia de la regla: la lista y el número salen del mismo lugar.
+  var _vencidosMap = {};
+  (window._propVencidoDelMes || []).forEach(function(v) { _vencidosMap[v.propId] = true; });
+  allPendientes.forEach(function(p) { p._vencido = !!_vencidosMap[p.propId]; });
+  if (filtro === 'vencido')  allPendientes = allPendientes.filter(function(p){ return p._vencido; });
+  if (filtro === 'en-plazo') allPendientes = allPendientes.filter(function(p){ return !p._vencido; });
 
   // Ordenar: primero vencidos (desc por pendiente), luego dentro de plazo
   allPendientes.sort(function(a, b) {
@@ -21851,10 +21861,16 @@ function verPendientesTotal() {
     return b.pendiente - a.pendiente;
   });
 
-  document.getElementById('fpAbonos-title').innerHTML = '⏳ Pendientes por pagar';
+  document.getElementById('fpAbonos-title').innerHTML =
+      filtro === 'vencido'  ? '🔴 Vencido del mes'
+    : filtro === 'en-plazo' ? '⏳ Todavía en plazo'
+    : '⏳ Pendientes por pagar';
   var html = '';
   if (!allPendientes.length) {
-    html = '<div style="text-align:center;padding:24px;color:var(--text3)">No hay pendientes. ¡Todo cobrado!</div>';
+    html = '<div style="text-align:center;padding:24px;color:var(--text3)">'
+      + (filtro === 'vencido'  ? 'No hay rentas vencidas este mes. 👍'
+       : filtro === 'en-plazo' ? 'No hay rentas pendientes dentro de plazo.'
+       : 'No hay pendientes. ¡Todo cobrado!') + '</div>';
   } else {
     var total = allPendientes.reduce(function(s, p) { return s + p.pendiente; }, 0);
     var vencidos = allPendientes.filter(function(p){ return p._vencido; });
@@ -21864,7 +21880,8 @@ function verPendientesTotal() {
 
     html += '<div style="background:rgba(217,119,6,0.06);border:1px solid #fcd34d;border-radius:10px;padding:14px;margin-bottom:16px">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-    html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#b45309;font-weight:600">Total pendiente</div>';
+    var _tituloTotal = filtro === 'vencido' ? 'Total vencido' : filtro === 'en-plazo' ? 'Total en plazo' : 'Total pendiente';
+    html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#b45309;font-weight:600">' + _tituloTotal + '</div>';
     html += '<div style="font-size:10px;color:var(--text3);margin-top:1px">' + allPendientes.length + ' propiedad' + (allPendientes.length !== 1 ? 'es' : '') + ' con cobro incompleto</div></div>';
     html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:22px;font-weight:800;color:#b45309">' + fmt(total) + '</div></div>';
     // Sub-totales vencido vs en plazo
