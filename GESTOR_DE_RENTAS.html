@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v144 · 30-oct-2026';
+var APP_VERSION = 'v145 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14280,29 +14280,41 @@ function renderDashboard() {
           // Chips de estado con %
           // FIX COBRANZA-ESTADOS-ARRIBA (2026-10): los cuatro estados pasan de chips al pie a los
           // mismos botones cuadrados que Mi Portafolio, y arriba. Las dos tarjetas del Inicio
-          // comparten estructura; que una contara con chips abajo y la otra con botones arriba
+          // comparten estructura; que una contara con botones arriba y la otra con chips abajo
           // obligaba a buscar el conteo en dos lugares distintos.
-          // "A favor" NO lleva porcentaje a propósito: esas propiedades YA están contadas dentro
-          // de "Al día" (una con saldo a favor suma en los dos contadores), así que como cuarta
-          // rebanada hacía que los porcentajes sumaran 113%. Su tercera línea dice de dónde sale.
+          //
+          // FIX ESTADOS-SE-SOLAPAN (2026-10): "Al día" mostraba el total de al-día, que INCLUYE
+          // a los de saldo a favor (el acumulador hace alDia++ y aFavor++ en el mismo renglón).
+          // Con los cuatro botones juntos, la suma se pasaba del total: 33+5+2+2 = 42 cuando sólo
+          // hay 38 propiedades rentadas, y Franco lo cachó de inmediato. Peor: el filtro que abre
+          // ese botón SIEMPRE excluyó a los de saldo a favor (ver _verPropiedadesEnModal,
+          // "al-dia"), así que el número y su propia lista nunca coincidieron.
+          // Ahora "Al día" son los que están al día SIN saldo a favor, y "A favor" los que lo
+          // tienen. Los cuatro se reparten las propiedades activas sin repetir ninguna, y cada
+          // botón abre exactamente lo que dice su número.
+          // Se quitan los porcentajes y la tercera línea: con las categorías ya separadas, el
+          // conteo se lee solo, y así quedan iguales de altos que los de Mi Portafolio.
           var _chipsHtml = '';
           if (_totalInquilinos > 0) {
+            var _alDiaSinFavor = Math.max(0, alDia - aFavor);
             var _sep = '<div style="width:1px;background:var(--border)"></div>';
-            var _btnEstado = function(arg, color, valor, etiqueta, sub) {
+            var _btnEstado = function(arg, color, valor, etiqueta) {
               return '<div data-action="filtrarClientesPorEstado" data-arg="' + arg + '" '
                 + 'style="flex:1;text-align:center;padding:10px 4px;cursor:pointer;background:var(--surface2);transition:background .2s;min-width:0" '
                 + 'onmouseover="this.style.background=\'var(--accent-light)\'" onmouseout="this.style.background=\'var(--surface2)\'">'
                 + '<div style="font-size:20px;font-weight:600;color:' + color + '">' + valor + '</div>'
                 + '<div style="font-size:10px;color:' + color + ';font-weight:600;text-transform:uppercase;letter-spacing:.3px">' + etiqueta + '</div>'
-                + '<div style="font-size:9px;color:var(--text3);margin-top:2px;text-transform:none;letter-spacing:0">' + sub + '</div>'
                 + '</div>';
             };
-            _chipsHtml = '<div style="display:flex;gap:0;margin-top:8px;margin-bottom:4px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">'
-              + _btnEstado('al-dia', 'var(--success)', alDia, 'Al día', _pctAlDia + '%')
-              + (aFavor > 0 ? _sep + _btnEstado('a-favor', 'var(--success)', aFavor, 'A favor', 'de los al día') : '')
-              + (parciales > 0 ? _sep + _btnEstado('parcial', 'var(--warning)', parciales, 'Incompleto', _pctParcial + '%') : '')
-              + (atrasadas > 0 ? _sep + _btnEstado('atrasado', 'var(--danger)', atrasadas, 'Atrasado', _pctAtrasado + '%') : '')
-              + '</div>';
+            var _btns = [];
+            if (_alDiaSinFavor > 0) _btns.push(_btnEstado('al-dia', 'var(--success)', _alDiaSinFavor, 'Al día'));
+            if (aFavor > 0)         _btns.push(_btnEstado('a-favor', 'var(--success)', aFavor, 'A favor'));
+            if (parciales > 0)      _btns.push(_btnEstado('parcial', 'var(--warning)', parciales, 'Incompleto'));
+            if (atrasadas > 0)      _btns.push(_btnEstado('atrasado', 'var(--danger)', atrasadas, 'Atrasado'));
+            if (_btns.length) {
+              _chipsHtml = '<div style="display:flex;gap:0;margin-top:8px;margin-bottom:4px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">'
+                + _btns.join(_sep) + '</div>';
+            }
           }
 
           // Desglose por forma de pago — formato igual al desglose por tipo de Mi portafolio
