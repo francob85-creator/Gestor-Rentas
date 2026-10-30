@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v148 · 30-oct-2026';
+var APP_VERSION = 'v149 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12595,6 +12595,96 @@ function _historialMontoVigente(renta) {
   return _vig;
 }
 
+// FIX INCREMENTO-NO-LLEGA-A-MONTO (2026-10): un incremento programado con fecha FUTURA
+// escribía su entrada en historialMonto pero NO tocaba renta.monto (ver el bloque de
+// "aplicar incremento": `if (_fechaAplicarD <= _hoyAplicar) r.monto = nuevoMonto`). Su
+// comentario decía "el historial se encarga" — y se encarga del dashboard y de
+// getStatusRenta, que leen _montoEfectivoEnMes. Pero NADIE actualizaba renta.monto al
+// llegar la fecha, y renta.monto es de donde calcRentaFacturable() saca el subtotal de la
+// factura ("El subtotal de la factura siempre es igual al precio de renta de la propiedad",
+// con el campo readonly). Resultado: cada vez que se guardaba la propiedad, la config de
+// facturación se regeneraba con la renta VIEJA y se timbraba de menos, en silencio.
+// Caso real: Bodega Sarabia. Incremento aplicado el 01-jun-2026 con fecha 21-jun-2026;
+// renta.monto se quedó en $23,100 contra los $24,200 del historial, y de agosto a noviembre
+// se facturó $1,100 menos cada mes ($4,400).
+// Esta función pone al día renta.monto cuando la fecha ya pasó. Reglas de seguridad:
+//   · SOLO entradas EXPLÍCITAS del timeline, nunca el monto inferido de los pagos que
+//     _montoEfectivoEnMes deduce cuando no hay historial. Escribir un monto adivinado
+//     sería peor que el bug.
+//   · Pasa por _historialMontoVigente, así que las entradas de inquilinos anteriores
+//     quedan fuera (FIX HISTORIAL-INQUILINO-ANTERIOR).
+//   · La config de facturación se recalcula SOLO si su subtotal era el espejo exacto del
+//     monto viejo. Si alguien la ajustó a mano, no se toca.
+//   · El pasado no se toca: no altera abonos, facturas emitidas ni el historial.
+// Deja rastro por console.warn porque la bitácora del celular no captura console.log: si
+// algún día deja de correr, el silencio se nota (LA SEGUNDA LECCIÓN).
+var _montoCatchupProgramado = false;
+var _montoCatchupHecho = false;
+function _programarCatchupMontos() {
+  if (_montoCatchupProgramado || _montoCatchupHecho) return;
+  if (!_fbReady) return;
+  _montoCatchupProgramado = true;
+  // 8s de margen: que los snapshots iniciales terminen de asentarse antes de escribir.
+  setTimeout(_aplicarIncrementosVencidos, 8000);
+}
+function _aplicarIncrementosVencidos() {
+  if (_montoCatchupHecho) return;
+  if (!_fbReady || !state.rentas || !state.rentas.length) { _montoCatchupProgramado = false; return; }
+  if (_enGuardiaImport()) { _montoCatchupProgramado = false; return; }
+  _montoCatchupHecho = true;
+  var _hoyCU = new Date().toISOString().slice(0, 10);
+  var _tocadas = [];
+  state.rentas.forEach(function(r) {
+    var _h = _historialMontoVigente(r);
+    if (!_h || !_h.length) return;
+    // La entrada vigente es la de fecha de aplicación más reciente que YA pasó.
+    var _vig = null, _vigF = '';
+    for (var _i = 0; _i < _h.length; _i++) {
+      var _f = String(_h[_i].fechaAplic || _h[_i].fecha || '').slice(0, 10);
+      if (!_f || _f > _hoyCU) continue;
+      if (!_vig || _f >= _vigF) { _vig = _h[_i]; _vigF = _f; }
+    }
+    if (!_vig) return;
+    var _nuevo = Number(_vig.montoNuevo) || 0;
+    var _actual = Number(r.monto) || 0;
+    if (!_nuevo || Math.abs(_nuevo - _actual) < 1) return;
+    r.monto = _nuevo;
+    // Misma fórmula que calcRentaFacturable(), copiada verbatim para que las dos no se
+    // separen: IVA fijo 16% y las retenciones por el porcentaje ya configurado.
+    var _facSync = false;
+    if (r.facturable && r.facturacion && Math.abs((Number(r.facturacion.subtotal) || 0) - _actual) < 1) {
+      var _iva = Math.round(_nuevo * 0.16 * 100) / 100;
+      var _rIsr = Math.round(_nuevo * ((Number(r.facturacion.retIsrPct) || 0) / 100) * 100) / 100;
+      var _rIva = Math.round(_nuevo * ((Number(r.facturacion.retIvaPct) || 0) / 100) * 100) / 100;
+      r.facturacion.subtotal = _nuevo;
+      r.facturacion.iva = _iva;
+      r.facturacion.retIsr = _rIsr;
+      r.facturacion.retIva = _rIva;
+      r.facturacion.neto = Math.round((_nuevo + _iva - _rIsr - _rIva) * 100) / 100;
+      _facSync = true;
+    }
+    _tocadas.push({ renta: r, de: _actual, a: _nuevo, desde: _vigF, fac: _facSync });
+  });
+  if (!_tocadas.length) return;
+  _tocadas.forEach(function(t) {
+    console.warn('[IncrementoVencido] ' + (t.renta.nombre || t.renta.id) + ': renta.monto $' +
+      t.de + ' → $' + t.a + ' (el historial lo aplicaba desde ' + t.desde + ' y nadie lo había ' +
+      'puesto al día)' + (t.fac ? '. Config de facturación recalculada al nuevo subtotal.' : '') +
+      ' — informativo, no es un error.');
+  });
+  _clearStatusCache();
+  if (state._rentasMigratedV2) {
+    _tocadas.forEach(function(t) {
+      try { _fbWriteRenta(t.renta); }
+      catch (e) { console.error('[IncrementoVencido] no se pudo sincronizar ' + t.renta.id + ': ' + e.message); }
+    });
+  }
+  forceSave();
+  render();
+  showToast('📈 ' + _tocadas.length + ' propiedad' + (_tocadas.length !== 1 ? 'es' : '') +
+    ' con incremento vencido puesta' + (_tocadas.length !== 1 ? 's' : '') + ' al día', 5000);
+}
+
 function _montoEfectivoEnMes(renta, mesStr) {
   var montoBase = Number(renta.monto) || 0;
   // FIX SONDA-DIA-COBRO (2026-10): esta función sondeaba el timeline con el DÍA 1 del mes
@@ -13858,6 +13948,10 @@ function renderDashboard() {
   // Se ejecuta antes del early-return de empty state para que también se vea en
   // cuentas sin propiedades configuradas (donde no aplica, pero es defensivo).
   _renderIncrementosBanner();
+  // FIX INCREMENTO-NO-LLEGA-A-MONTO (2026-10): engancharlo aquí y no en _finishLogin
+  // porque al terminar el login los datos todavía no están en memoria. Es un disparo
+  // único y se autoprotege; en los renders siguientes no cuesta nada.
+  _programarCatchupMontos();
   var el = document.getElementById('dashboard-cards');
   var _visibles = getRentasVisibles();
   var _hoy = new Date();
