@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v136 · 30-oct-2026';
+var APP_VERSION = 'v137 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14226,15 +14226,15 @@ function renderDashboard() {
           <div style="margin-top:12px;padding-top:11px;border-top:1px dashed var(--border)">
             <div data-action="verCobradoCalendarMes" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:5px">
               <span style="font-size:11.5px;color:var(--text2);font-weight:600">💵 Entró a caja este mes</span>
-              <span style="font-size:14px;font-weight:700;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(totalCobradoCalendarMes)} <span style="color:var(--text3);font-weight:400;font-size:13px">›</span></span>
+              <span style="font-size:15px;font-weight:800;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(totalCobradoCalendarMes)} <span style="color:var(--text3);font-weight:400;font-size:13px">›</span></span>
             </div>
             ${_atrasosCobrados >= 1 ? `<div data-action="verCobradoCalendarMes" data-arg="vencido" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding-left:14px;margin-bottom:5px">
               <span style="font-size:11px;color:var(--text3)">⏮️ de eso, rentas atrasadas cobradas</span>
-              <span style="font-size:13px;font-weight:700;color:var(--text2);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_atrasosCobrados)} <span style="color:var(--text3);font-weight:400">›</span></span>
+              <span style="font-size:15px;font-weight:800;color:var(--text2);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_atrasosCobrados)} <span style="color:var(--text3);font-weight:400">›</span></span>
             </div>` : ''}
             ${_adelantosCobrados >= 1 ? `<div data-action="verCobradoCalendarMes" data-arg="adelanto" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding-left:14px">
               <span style="font-size:11px;color:var(--text3)">✨ de eso, rentas pagadas por adelantado</span>
-              <span style="font-size:13px;font-weight:700;color:var(--text2);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_adelantosCobrados)} <span style="color:var(--text3);font-weight:400">›</span></span>
+              <span style="font-size:15px;font-weight:800;color:var(--text2);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_adelantosCobrados)} <span style="color:var(--text3);font-weight:400">›</span></span>
             </div>` : ''}
           </div>
 
