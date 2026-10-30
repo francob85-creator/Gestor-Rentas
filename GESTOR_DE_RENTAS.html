@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v135 · 30-oct-2026';
+var APP_VERSION = 'v136 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -13322,7 +13322,15 @@ function _computeFPData(visibles, rentadas) {
         propiedades: 0,
         abonos: [],
         abonosAnt: [],
-        propiesPendientes: []
+        propiesPendientes: [],
+        // FIX ESPERADO-INFLADO (2026-10): hermana de propiesPendientes, para las que YA
+        // quedaron cubiertas. Antes no existía y cada modal que las necesitaba las
+        // reconstruía sumando los abonos del mes, sin tope y declarando "esperado =
+        // cobrado". Con eso, una propiedad que recibe dos rentas en el mismo mes decía
+        // que su renta era el doble. Caso real: TAMESIS DEPA B, donde el inquilino que
+        // se fue pagó octubre completo y el que entró también — dos pagos de $15,500
+        // legítimos que inflaban el esperado del portafolio en $15,500.
+        propiesCubiertas: []
       };
       var _inicioFP = r.inicio || '';
       if (_inicioFP) {
@@ -13432,6 +13440,17 @@ function _computeFPData(visibles, rentadas) {
           esperado: _montoRenta,
           cobrado: _cobCapado,
           pendiente: _pendEstaRenta
+        });
+      } else {
+        // El esperado y el cobrado salen de AQUÍ, del mismo cálculo que la tarjeta, en vez
+        // de que cada pantalla los deduzca por su cuenta. _cobCapado ya viene topado.
+        fpData[fpId].propiesCubiertas.push({
+          propId: r.id,
+          nombre: r.nombre,
+          cliente: getClienteNombre(r.clienteId),
+          esperado: _montoRenta,
+          cobrado: _cobCapado,
+          pendiente: 0
         });
       }
     });
@@ -21899,33 +21918,19 @@ function verTotalAIngresar() {
         tipo: 'renta-mes'
       });
     });
-    // Propiedades ya cobradas (no aparecen en propiesPendientes)
-    var _idsPend = new Set((fp.propiesPendientes || []).map(function(p){ return p.propId; }));
-    var _cubiertas = {};
-    (fp.abonos || []).forEach(function(a) {
-      if (_idsPend.has(a.propiedadId)) return;
-      if (!_cubiertas[a.propiedadId]) {
-        _cubiertas[a.propiedadId] = {
-          propId: a.propiedadId,
-          nombre: a.propiedad,
-          cliente: a.cliente,
-          cobrado: 0,
-          fpNombre: fp.nombre,
-          fpIcono: fp.icono
-        };
-      }
-      _cubiertas[a.propiedadId].cobrado += Number(a.monto) || 0;
-    });
-    Object.values(_cubiertas).forEach(function(p) {
+    // FIX ESPERADO-INFLADO (2026-10): misma cura que en verEsperadoCobranza. Esta función
+    // hoy no tiene puerta en la interfaz (se retiró "Total a ingresar" en v135), pero traía
+    // la misma reconstrucción defectuosa; se alinea para no dejar la mina puesta.
+    (fp.propiesCubiertas || []).forEach(function(p) {
       rentasDelMes.push({
         propId: p.propId,
         nombre: p.nombre,
         cliente: p.cliente,
-        monto: p.cobrado,
+        monto: p.esperado,
         cobrado: p.cobrado,
         pendiente: 0,
-        fpNombre: p.fpNombre,
-        fpIcono: p.fpIcono,
+        fpNombre: fp.nombre,
+        fpIcono: fp.icono,
         tipo: 'renta-mes'
       });
     });
@@ -22038,36 +22043,22 @@ function verEsperadoCobranza() {
         fpIcono: fp.icono
       });
     });
-    // Para las propiedades que ya están totalmente cobradas, no aparecen en propiesPendientes.
-    // Reconstruir desde fpData: cobrado = sum(esperado pagado), abonos del mes son referencia.
-    // Calculamos: propiedades totales - propiedades pendientes = propiedades cubiertas
-    var _idsConPendiente = new Set((fp.propiesPendientes || []).map(function(p){ return p.propId; }));
-    // Recorrer abonos del mes para sacar las propiedades cubiertas que no están en pendientes
-    var _propsCubiertas = {};
-    (fp.abonos || []).forEach(function(a) {
-      if (_idsConPendiente.has(a.propiedadId)) return; // ya está en pendientes
-      if (!_propsCubiertas[a.propiedadId]) {
-        _propsCubiertas[a.propiedadId] = {
-          propId: a.propiedadId,
-          nombre: a.propiedad,
-          cliente: a.cliente,
-          cobrado: 0,
-          fpNombre: fp.nombre,
-          fpIcono: fp.icono
-        };
-      }
-      _propsCubiertas[a.propiedadId].cobrado += Number(a.monto) || 0;
-    });
-    Object.values(_propsCubiertas).forEach(function(p) {
+    // FIX ESPERADO-INFLADO (2026-10): las ya cubiertas se leen de propiesCubiertas, que las
+    // llena _computeFPData con el MISMO esperado que usa la tarjeta. Antes se reconstruían
+    // aquí sumando los abonos del mes sin tope, y se declaraba "esperado = cobrado": por eso
+    // este modal decía $1,097,763 mientras la tarjeta decía $1,082,263. Los $15,500 de
+    // diferencia eran TAMESIS DEPA B, que cobró dos rentas de octubre (el inquilino saliente
+    // pagó el mes completo y el entrante también). Dos pagos reales, una sola renta esperada.
+    (fp.propiesCubiertas || []).forEach(function(p) {
       todasProps.push({
         propId: p.propId,
         nombre: p.nombre,
         cliente: p.cliente,
-        esperado: p.cobrado, // si está cubierto, esperado = cobrado
+        esperado: p.esperado,
         cobrado: p.cobrado,
         pendiente: 0,
-        fpNombre: p.fpNombre,
-        fpIcono: p.fpIcono
+        fpNombre: fp.nombre,
+        fpIcono: fp.icono
       });
     });
   });
