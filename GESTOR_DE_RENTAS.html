@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v149 · 30-oct-2026';
+var APP_VERSION = 'v150 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -21687,16 +21687,39 @@ function _verPropiedadesEnModal(filtro, _tituloOverride) {
     }
     return m;
   };
+  // FIX FAVOR-MUESTRA-RENTA (2026-10): la lista de "Propiedades con saldo a favor" enseñaba la
+  // RENTA MENSUAL de cada propiedad y su suma ($79,581/mes), no el saldo a favor ($100,234).
+  // Lo reportó Franco: el título promete una cosa y el número dice otra. Esta función la
+  // comparten 11 filtros y para los demás "por mes" sí es lo correcto, así que sólo cambia
+  // este camino.
+  // Los meses se calculan contra la renta NETA, no contra el subtotal: saldoFavor viene de
+  // getStatusRenta y es neto. Medido contra el respaldo del 30-oct, dividir por el neto da
+  // números redondos (2.000, 1.000, 1.000) y dividir por el subtotal da 1.907 y 0.910 — o sea
+  // mezclar unidades inventa meses que nadie pagó.
+  var _esFavor = (filtro === 'a-favor');
+  var _favorDe = function(r) { var st = getStatusRenta(r); return (st && st.saldoFavor > 0) ? st.saldoFavor : 0; };
+  var _mesesFavor = function(r) {
+    var _neto = Math.round(_montoEfectivo(r) * _calcFactorNetoRenta(r) * 100) / 100;
+    if (_neto < 1) return 0;
+    return _favorDe(r) / _neto;
+  };
+  var _fmtMeses = function(m) {
+    if (!m) return '';
+    // Casi-entero se muestra entero: un centavo de redondeo no debe pintar "0.9 meses".
+    var _txt = Math.abs(m - Math.round(m)) < 0.05 ? String(Math.round(m)) : m.toFixed(1);
+    return _txt + (_txt === '1' ? ' mes pagado' : ' meses pagados');
+  };
   if (!props.length) {
     html = '<div style="text-align:center;padding:24px;color:var(--text3)">No hay propiedades en esta categoría.</div>';
   } else {
     // Ordenar por monto desc (efectivo, incluyendo histórico)
-    props.sort(function(a, b) { return _montoEfectivo(b) - _montoEfectivo(a); });
-    var totalMonto = props.reduce(function(s, r) { return s + _montoEfectivo(r); }, 0);
+    if (_esFavor) props.sort(function(a, b) { return _favorDe(b) - _favorDe(a); });
+    else props.sort(function(a, b) { return _montoEfectivo(b) - _montoEfectivo(a); });
+    var totalMonto = props.reduce(function(s, r) { return s + (_esFavor ? _favorDe(r) : _montoEfectivo(r)); }, 0);
     html += '<div style="background:var(--accent-light);border:1px solid rgba(15,94,58,0.2);border-radius:10px;padding:14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">';
-    html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);font-weight:600">Total propiedades</div>';
+    html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);font-weight:600">' + (_esFavor ? 'Total a favor' : 'Total propiedades') + '</div>';
     html += '<div style="font-size:10px;color:var(--text3);margin-top:1px">' + props.length + ' propiedad' + (props.length !== 1 ? 'es' : '') + '</div></div>';
-    html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:20px;font-weight:800;color:var(--accent)">' + fmt(totalMonto) + '/mes</div></div>';
+    html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:20px;font-weight:800;color:var(--accent)">' + fmt(totalMonto) + (_esFavor ? '' : '/mes') + '</div></div>';
     html += '<div style="max-height:55vh;overflow-y:auto">';
     props.forEach(function(r) {
       var st = getStatusRenta(r);
@@ -21718,8 +21741,8 @@ function _verPropiedadesEnModal(filtro, _tituloOverride) {
       if (st.saldoVencido >= 1) html += '<div style="font-size:11px;color:var(--danger);margin-top:2px;font-weight:600">Debe ' + fmt(st.saldoVencido) + '</div>';
       html += '</div>';
       html += '<div style="text-align:right;flex-shrink:0">';
-      html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:14px;font-weight:700;color:var(--text)">' + fmt(_mEf) + '</div>';
-      html += '<div style="font-size:9px;color:var(--text3);margin-top:1px">por mes</div>';
+      html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:14px;font-weight:700;color:' + (_esFavor ? 'var(--success)' : 'var(--text)') + '">' + fmt(_esFavor ? _favorDe(r) : _mEf) + '</div>';
+      html += '<div style="font-size:9px;color:var(--text3);margin-top:1px">' + (_esFavor ? escHtml(_fmtMeses(_mesesFavor(r))) : 'por mes') + '</div>';
       html += '</div>';
       html += '<div style="color:var(--text3);font-size:12px;flex-shrink:0">›</div>';
       html += '</div>';
