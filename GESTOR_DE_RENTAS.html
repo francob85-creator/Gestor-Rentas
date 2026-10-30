@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v143 · 30-oct-2026';
+var APP_VERSION = 'v144 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14278,13 +14278,30 @@ function renderDashboard() {
           });
 
           // Chips de estado con %
+          // FIX COBRANZA-ESTADOS-ARRIBA (2026-10): los cuatro estados pasan de chips al pie a los
+          // mismos botones cuadrados que Mi Portafolio, y arriba. Las dos tarjetas del Inicio
+          // comparten estructura; que una contara con chips abajo y la otra con botones arriba
+          // obligaba a buscar el conteo en dos lugares distintos.
+          // "A favor" NO lleva porcentaje a propósito: esas propiedades YA están contadas dentro
+          // de "Al día" (una con saldo a favor suma en los dos contadores), así que como cuarta
+          // rebanada hacía que los porcentajes sumaran 113%. Su tercera línea dice de dónde sale.
           var _chipsHtml = '';
           if (_totalInquilinos > 0) {
-            _chipsHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px dashed var(--border)">'
-              + '<span data-action="filtrarClientesPorEstado" data-arg="al-dia" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✅ Al día <strong style="font-weight:800">' + alDia + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctAlDia + '%</span></span>'
-              + '<span data-action="filtrarClientesPorEstado" data-arg="a-favor" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✨ A favor <strong style="font-weight:800">' + aFavor + '</strong></span>'
-              + '<span data-action="filtrarClientesPorEstado" data-arg="parcial" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fef3c7;color:var(--warning)">🔶 Incompleto <strong style="font-weight:800">' + parciales + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctParcial + '%</span></span>'
-              + '<span data-action="filtrarClientesPorEstado" data-arg="atrasado" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fee2e2;color:var(--danger)">⚠️ Atrasado <strong style="font-weight:800">' + atrasadas + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctAtrasado + '%</span></span>'
+            var _sep = '<div style="width:1px;background:var(--border)"></div>';
+            var _btnEstado = function(arg, color, valor, etiqueta, sub) {
+              return '<div data-action="filtrarClientesPorEstado" data-arg="' + arg + '" '
+                + 'style="flex:1;text-align:center;padding:10px 4px;cursor:pointer;background:var(--surface2);transition:background .2s;min-width:0" '
+                + 'onmouseover="this.style.background=\'var(--accent-light)\'" onmouseout="this.style.background=\'var(--surface2)\'">'
+                + '<div style="font-size:20px;font-weight:600;color:' + color + '">' + valor + '</div>'
+                + '<div style="font-size:10px;color:' + color + ';font-weight:600;text-transform:uppercase;letter-spacing:.3px">' + etiqueta + '</div>'
+                + '<div style="font-size:9px;color:var(--text3);margin-top:2px;text-transform:none;letter-spacing:0">' + sub + '</div>'
+                + '</div>';
+            };
+            _chipsHtml = '<div style="display:flex;gap:0;margin-top:8px;margin-bottom:4px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">'
+              + _btnEstado('al-dia', 'var(--success)', alDia, 'Al día', _pctAlDia + '%')
+              + (aFavor > 0 ? _sep + _btnEstado('a-favor', 'var(--success)', aFavor, 'A favor', 'de los al día') : '')
+              + (parciales > 0 ? _sep + _btnEstado('parcial', 'var(--warning)', parciales, 'Incompleto', _pctParcial + '%') : '')
+              + (atrasadas > 0 ? _sep + _btnEstado('atrasado', 'var(--danger)', atrasadas, 'Atrasado', _pctAtrasado + '%') : '')
               + '</div>';
           }
 
@@ -14333,6 +14350,7 @@ function renderDashboard() {
           return `
           <div class="kpi-label-big">⏳ Cobranza · ${_mesActualLbl} <button class="kpi-help-btn" data-action="showKpiHelp" data-arg="cobranza" data-stop="1">?</button></div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:12px;font-style:italic">Todos los montos son netos (después de retenciones)</div>
+          ${_chipsHtml}
 
           <!-- ═══════════════ RENTAS DEL MES ═══════════════ -->
           <div data-action="verEsperadoCobranza" style="text-align:center;padding:2px 0 14px;cursor:pointer">
@@ -14374,8 +14392,6 @@ function renderDashboard() {
             </div>
           </div>` : ''}
 
-          <!-- Chips de estado -->
-          ${_chipsHtml}
 
           <!-- Entró a caja este mes, con sus dos partes sangradas: son PARTE de ese total,
                no cantidades aparte. El mismo criterio que "A favor" dentro de "Al día". -->
