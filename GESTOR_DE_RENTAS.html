@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v138 · 30-oct-2026';
+var APP_VERSION = 'v139 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -6965,21 +6965,17 @@ function _applyMainDocSnapshot(data, isExternalUpdate) {
         //   B) Fresh install / empty memory + main doc has clienteId → use main doc ✅
         //   C) Both empty (unassigned) → stays empty ✅
         // We do NOT use memory over doc blindly (old bug) or doc over memory blindly.
-        var _memCli = lr ? (lr.clienteId || '') : '';
-        var _docCli = cr.clienteId || '';
-        cr.clienteId = _memCli || _docCli;
         // FIX HISTORIAL-NO-ENCOGE (2026-10): ESTE es el camino por el que se perdieron los
         // $132,000 de Claudia en ALEJANDRAS DEPA B, no el de la subcolección.
         // Abajo, `state.rentas = _mainFiltradas` REEMPLAZA el arreglo completo: cada propiedad
-        // queda tal cual la trae el doc principal. Y el arreglo embebido del doc principal
-        // puede estar FÓSIL —de antes de la baja—, sin la ficha archivada del inquilino.
-        // El rescate que viene más abajo salva _vacatedAt y las lápidas, pero (a) nunca salvó
-        // historialInquilinos y (b) vive DENTRO de un if que exige baja reciente (<5 min),
-        // escritura local reciente (<60s) o clienteId local vacío. Pasada esa ventana, o ya
-        // resucitado el inquilino, no se ejecuta nada y el fósil se impone entero.
-        // Por eso esto va FUERA del if, sin condición: lo de abajo es recuperable tecleándolo
-        // otra vez, esto no. Una ficha archivada que se pierde se lleva los pagos con ella,
-        // porque la baja ya los borró de la nube.
+        // queda tal cual la trae el doc principal. Y ese arreglo embebido puede estar FÓSIL
+        // —de antes de la baja—, sin la ficha archivada del inquilino. El rescate que viene
+        // más abajo salva _vacatedAt y las lápidas, pero (a) nunca salvó historialInquilinos y
+        // (b) vive DENTRO de un if que exige baja reciente (<5 min), escritura local reciente
+        // (<60s) o clienteId local vacío. Pasada esa ventana el fósil se impone entero.
+        // Va FUERA del if y sin condición: lo de abajo se puede volver a teclear, esto no. Una
+        // ficha archivada que se pierde se lleva los pagos con ella, porque la baja ya los
+        // borró de la nube. Y va ANTES de decidir el inquilino, porque esa decisión la consulta.
         if (lr) {
           var _hLocM = (lr.historialInquilinos || []).length;
           var _hDocM = (cr.historialInquilinos || []).length;
@@ -6996,6 +6992,34 @@ function _applyMainDocSnapshot(data, isExternalUpdate) {
               ' ficha(s) de inquilino y la memoria ' + _hLocM + ' — se conservan ' + _hUM.length +
               ' (informativo, no es un error).');
           }
+        }
+        var _memCli = lr ? (lr.clienteId || '') : '';
+        var _docCli = cr.clienteId || '';
+        // FIX EX-INQUILINO-RESUCITA (2026-10): `_memCli || _docCli` tomaba el del doc en cuanto
+        // la memoria estuviera vacía. Los tres casos que el comentario de arriba contempla son
+        // correctos, pero falta un CUARTO: la memoria está vacía porque el inquilino SE DIO DE
+        // BAJA. Ahí el vacío no es "no sé", es una decisión — y el fósil del doc principal, que
+        // todavía lo trae asignado, lo resucitaba. Le pasó a Claudia: dada de baja, y de vuelta
+        // como inquilina con la propiedad marcando que debía todo desde febrero.
+        //
+        // Había dos protecciones y las dos dependen de _vacatedAt, que es una marca volátil y
+        // además de ventana corta. La señal durable es otra y vive en los datos: si ese cliente
+        // YA está archivado como ex-inquilino de esta propiedad, con fecha de salida, entonces
+        // se fue. Un snapshot no puede volver a meterlo; sólo una acción explícita del usuario,
+        // que llega por _memCli y gana antes de llegar aquí. Si se le vuelve a rentar a la misma
+        // persona, esa asignación es local y pasa sin problema.
+        // Depende de historialInquilinos, que es justo lo que la unión de arriba ya protegió.
+        var _docEsExInquilino = false;
+        if (!_memCli && _docCli) {
+          _docEsExInquilino = (cr.historialInquilinos || []).some(function(h) {
+            return h && h.clienteId === _docCli && h.fin;
+          });
+        }
+        cr.clienteId = _memCli || (_docEsExInquilino ? '' : _docCli);
+        if (_docEsExInquilino) {
+          console.warn('[Sync EX-INQUILINO] Renta ' + cr.id + ': el doc principal traía al ' +
+            'ex-inquilino ' + _docCli + ' como actual, pero ya está archivado con fecha de ' +
+            'salida — no se reasigna (informativo, no es un error).');
         }
         // FIX SNAPSHOT-STALE: si la renta tiene escritura local muy reciente (<60s),
         // proteger campos críticos contra cambios contradictorios del main doc.
