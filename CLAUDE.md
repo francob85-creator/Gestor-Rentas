@@ -203,7 +203,9 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX PARPADEO-TARJETAS`, `FIX BAJA-PROG-SIN-GUARDIA`, `FIX SETDATE-CALENDARIO`,
 `FIX CHROME-PASSWORD-PROMPT`, `FIX SCROLL-BACKDROP`, `FIX NAV-OFFSET-REAL`,
 `FIX HEADER-OFFSET-OBSERVER`, `FIX VH-IOS`, `FIX HISTORIAL-INQUILINO-ANTERIOR`,
-`FIX VENCIDO-SOBRE-ESCRIBE-STATUS`, `FIX SONDA-DIA-COBRO`.
+`FIX VENCIDO-SOBRE-ESCRIBE-STATUS`, `FIX SONDA-DIA-COBRO`, `FIX RESIDUO-PENDIENTE`,
+`FIX COBRANZA-D`, `FIX ESPERADO-INFLADO`, `FIX HISTORIAL-NO-ENCOGE`,
+`FIX EX-INQUILINO-RESUCITA`, `FIX FECHA-SALIDA-IGNORADA`, `FIX BAJA-BOTON-MIENTE`.
 
 ---
 
@@ -350,6 +352,73 @@ Corolarios ya aprendidos:
   salvo, y el usuario aprende a ignorar los avisos — que es peor que no tenerlos. Antes de
   reintentar, pregúntate **si este error puede tener éxito alguna vez**; si no, ríndete y avisa
   una sola vez. Ver `FIX AVISOS-BUCLE` y `FIX ABONO-UNDEFINED` (2026-09).
+
+## La baja de un inquilino: por qué este flujo se lleva el dinero
+
+El 30-oct-2026 Franco dio de baja a Claudia en ALEJANDRAS DEPA B. Resultado: la inquilina
+seguía asignada, sus 8 pagos ($132,000) habían desaparecido, y la propiedad decía que debía
+todo desde febrero. **Es la cuarta vez que este flujo cuesta dinero** (Omar, Algodoneros en dos
+propiedades, TAMESIS DEPA F, y ahora Claudia). Entender por qué es tan peligroso evita la quinta.
+
+**La baja hace tres cosas en orden**: archiva la ficha del inquilino CON TODOS SUS PAGOS dentro
+de `renta.historialInquilinos`, deja lápidas de los abonos, y los borra de la nube. Después del
+tercer paso, **esa ficha archivada es la única copia que existe de esos pagos.** Todo lo que
+toque `historialInquilinos` a partir de ahí está tocando dinero irrecuperable.
+
+Lo que falló esta vez fueron dos cosas distintas, las dos en sincronización:
+
+1. **`FIX HISTORIAL-NO-ENCOGE`** — `_applyMainDocSnapshot` termina con
+   `state.rentas = _mainFiltradas`: **reemplaza el arreglo completo** con el que trae el doc
+   principal. Ese arreglo embebido puede estar FÓSIL —de antes de la baja— y no traer la ficha.
+   Había un rescate, pero (a) nunca incluyó `historialInquilinos` y (b) vivía DENTRO de un `if`
+   que exige baja reciente (<5 min) o escritura local reciente (<60s). Pasada la ventana, el
+   fósil se impone entero. Cura: fusión-unión de `historialInquilinos`, lápidas y `_vacatedAt`,
+   **fuera del `if` y sin condición**. La unión es segura sin lápidas propias porque no existe
+   forma de borrar una ficha del historial: si falta en una copia, es pérdida, nunca borrado.
+2. **`FIX EX-INQUILINO-RESUCITA`** — una sola línea: `cr.clienteId = _memCli || _docCli`. Toma
+   el del doc en cuanto la memoria esté vacía. Su comentario contempla tres casos correctos y
+   le falta el cuarto: **la memoria está vacía porque el inquilino se dio de baja**. Cura: si
+   ese cliente ya está archivado como ex-inquilino de esa propiedad con fecha de salida, un
+   snapshot no puede volver a meterlo; sólo una acción local.
+
+### Lo que hay que llevarse de aquí
+
+- **Protege lo irrecuperable, no lo que se puede volver a teclear.** La lista de campos
+  críticos era `clienteId, monto, inicio, fin, dia, nombre, tipo`: todo recuperable en diez
+  segundos tecleando. Lo único que no se puede reconstruir —la ficha archivada— quedaba fuera.
+  Al escribir una guardia, pregúntate **qué pasa si esto se pierde**, no qué tan central parece.
+- **Una marca de reloj no es una protección durable.** `_vacatedAt` tenía ventana de 5 minutos
+  y se perdía al recargar. La señal buena vive en los datos y no caduca: *"este cliente ya está
+  archivado como ex-inquilino, con fecha de salida"*.
+- **Un vacío puede ser una decisión, no una ausencia.** `clienteId: ''` después de una baja
+  significa "no tiene inquilino", no "no sé quién es". Tratar lo segundo por lo primero fue lo
+  que resucitó a Claudia. Cuando leas un campo vacío, pregúntate si alguien lo vació a propósito.
+- **Un campo que se llena y no se usa es peor que no tenerlo** (`FIX FECHA-SALIDA-IGNORADA`).
+  El modal pedía la fecha de baja, dejaba teclearla, y `registrarSalidaInquilino` archivaba
+  siempre con la de hoy. Franco puso 14-ago y el historial decía 30-oct. Nadie se entera.
+- **Un botón que hace otra cosa es un bug, no un detalle** (`FIX BAJA-BOTON-MIENTE`).
+  `if (tipo === 'inmediata' || fecha <= hoyISO)` mandaba por el camino inmediato en cuanto la
+  fecha fuera pasada, dijera lo que dijera el botón. Si una condición ignora lo que el usuario
+  eligió, el usuario no puede aprender a usar la app.
+
+### Cómo se diagnosticó, después de dos hipótesis equivocadas
+
+Culpé primero a otro dispositivo y después a la verificación previa de la baja. **Las dos se
+cayeron al probarlas**, y una tercera vez el error estuvo en mi prueba, no en el código: borré
+una llave en vez de ponerla en `[]`, y `Object.assign` no sobrescribe llaves ausentes.
+
+Lo que sí funcionó, y conviene repetir:
+
+- **Comparar dos respaldos campo por campo.** El de antes y el de después del incidente. Ahí
+  salió que `_vacatedAt`, las lápidas y la ficha estaban **ausentes**, no vacías — y eso
+  descartó de golpe los caminos que usan `Object.assign`, porque una llave ausente no
+  sobrescribe. Sin ese detalle habría seguido arreglando el lugar equivocado.
+- **Medir el alcance antes de tocar.** De 47 propiedades, sólo una perdió pagos. Saberlo cambió
+  la urgencia y descartó un problema sistémico.
+- **Simular el escenario exacto** con las funciones extraídas del archivo de producción: baja
+  hace 6 minutos, llega el fósil. Sin la cura: 0 fichas, $0. Con la cura: 1 ficha, 8 pagos,
+  $132,000. Y probar también que la guardia **no estorba** en los casos legítimos (instalación
+  nueva, y volver a rentarle a la misma persona).
 
 ---
 
