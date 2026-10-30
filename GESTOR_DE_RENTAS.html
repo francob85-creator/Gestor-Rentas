@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v134 · 28-oct-2026';
+var APP_VERSION = 'v135 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14078,35 +14078,36 @@ function renderDashboard() {
           var _pctParcial = _totalInquilinos > 0 ? Math.round(parciales / _totalInquilinos * 100) : 0;
           var _pctAtrasado = _totalInquilinos > 0 ? Math.round(atrasadas / _totalInquilinos * 100) : 0;
 
-          // Bloque de vencido: card rojo con total + sub-filas
-          var _vencidoHtml = '';
-          if (totalVencido > 0) {
-            _vencidoHtml = '<div style="margin-top:10px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;overflow:hidden">'
-              + '<div data-action="verVencidoTotal" data-stop="1" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #fecaca;background:rgba(254,226,226,0.5);cursor:pointer;transition:background 0.15s" onmouseover="this.style.background=\'rgba(254,202,202,0.7)\'" onmouseout="this.style.background=\'rgba(254,226,226,0.5)\'" title="Ver desglose de propiedades vencidas">'
-              + '<span style="font-size:12px;color:var(--danger);font-weight:800;text-transform:uppercase;letter-spacing:.5px">🔴 Total Vencido</span>'
-              + '<span style="display:flex;align-items:center;gap:6px"><span style="font-size:17px;font-weight:800;color:var(--danger);font-family:Inter,sans-serif;font-variant-numeric:tabular-nums">' + fmt(totalVencido) + '</span><span style="color:var(--danger);font-weight:400;font-size:14px">›</span></span>'
-              + '</div>';
-            if (vencidoDelMes > 0) {
-              _vencidoHtml += '<div data-action="verVencidoDelMes" data-stop="1" style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;cursor:pointer;border-bottom:' + (vencidoMesesAnteriores > 0 ? '1px solid #fecaca' : 'none') + ';transition:background 0.15s" onmouseover="this.style.background=\'rgba(254,226,226,0.5)\'" onmouseout="this.style.background=\'transparent\'">'
-                + '<span style="font-size:12px;color:var(--text2);font-weight:600;display:flex;align-items:center;gap:6px"><span style="color:var(--danger);font-size:8px">●</span> Del mes</span>'
-                + '<span style="display:flex;align-items:center;gap:5px;font-size:14px;font-weight:700;color:var(--danger);font-family:Inter,sans-serif;font-variant-numeric:tabular-nums">' + fmt(vencidoDelMes) + ' <span style="color:var(--text3);font-weight:400">›</span></span>'
-                + '</div>';
-            }
-            if (vencidoMesesAnteriores > 0) {
-              _vencidoHtml += '<div data-action="verVencidoAnteriores" data-stop="1" style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background=\'rgba(254,226,226,0.5)\'" onmouseout="this.style.background=\'transparent\'">'
-                + '<span style="font-size:12px;color:var(--text2);font-weight:600;display:flex;align-items:center;gap:6px"><span style="color:var(--danger);font-size:8px">●</span> De meses anteriores</span>'
-                + '<span style="display:flex;align-items:center;gap:5px;font-size:14px;font-weight:700;color:var(--danger);font-family:Inter,sans-serif;font-variant-numeric:tabular-nums">' + fmt(vencidoMesesAnteriores) + ' <span style="color:var(--text3);font-weight:400">›</span></span>'
-                + '</div>';
-            }
-            _vencidoHtml += '</div>';
-          }
+          // FIX COBRANZA-D (2026-10): la tarjeta pasa a una sola barra de tres colores.
+          // Antes había CUATRO cifras grandes y dos pares casi gemelos (total a ingresar vs
+          // rentas por recibir; recibido del mes vs cobrado de rentas del mes), y la más
+          // prominente —recibido del mes— era la que menos acción pide. Franco eligió esta
+          // forma sobre un mockup con cuatro variantes.
+          //
+          // La barra parte el esperado del mes en cobrado / en plazo / vencido. vencidoDelMes
+          // ya viene calculado arriba; "en plazo" es el resto del pendiente. Se topa en 0
+          // porque las dos cuentas llegan por caminos distintos y no quiero pintar negativo.
+          var _enPlazoMes = Math.max(0, _totalPendienteReal - vencidoDelMes);
+          // Los porcentajes: cobrado y vencido se calculan, y "en plazo" se queda con el resto,
+          // así los tres SIEMPRE suman 100 y la barra cierra exacta sin huecos ni desbordes.
+          var _pctVencidoBar = totalEsperadoNeto > 0 ? Math.min(100, Math.round(vencidoDelMes / totalEsperadoNeto * 100)) : 0;
+          var _pctCobradoBar = Math.max(0, Math.min(_pctCobrado, 100 - _pctVencidoBar));
+          var _pctEnPlazoBar = Math.max(0, 100 - _pctCobradoBar - _pctVencidoBar);
+          // Desglose de "entró a caja": cada cobro ya trae su marca desde _computeCobrosDelMesCal.
+          // La precedencia adelanto-antes-que-vencido es la MISMA que usa verCobradoCalendarMes
+          // al poner su etiqueta; si se separaran, la tarjeta y el modal dirían cosas distintas.
+          var _atrasosCobrados = 0, _adelantosCobrados = 0;
+          (_cobrosDelMesAll || []).forEach(function(c) {
+            if (c.esAdelanto) _adelantosCobrados += Number(c.monto) || 0;
+            else if (c.esVencido) _atrasosCobrados += Number(c.monto) || 0;
+          });
 
           // Chips de estado con %
           var _chipsHtml = '';
           if (_totalInquilinos > 0) {
             _chipsHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px dashed var(--border)">'
               + '<span data-action="filtrarClientesPorEstado" data-arg="al-dia" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✅ Al día <strong style="font-weight:800">' + alDia + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctAlDia + '%</span></span>'
-              + '<span data-action="filtrarClientesPorEstado" data-arg="a-favor" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✨ A favor <strong style="font-weight:800">' + aFavor + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctAFavor + '%</span></span>'
+              + '<span data-action="filtrarClientesPorEstado" data-arg="a-favor" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✨ A favor <strong style="font-weight:800">' + aFavor + '</strong></span>'
               + '<span data-action="filtrarClientesPorEstado" data-arg="parcial" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fef3c7;color:var(--warning)">🔶 Incompleto <strong style="font-weight:800">' + parciales + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctParcial + '%</span></span>'
               + '<span data-action="filtrarClientesPorEstado" data-arg="atrasado" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fee2e2;color:var(--danger)">⚠️ Atrasado <strong style="font-weight:800">' + atrasadas + '</strong> <span style="font-weight:400;opacity:0.75;font-size:11px">' + _pctAtrasado + '%</span></span>'
               + '</div>';
@@ -14158,66 +14159,65 @@ function renderDashboard() {
           <div class="kpi-label-big">⏳ Cobranza · ${_mesActualLbl} <button class="kpi-help-btn" data-action="showKpiHelp" data-arg="cobranza" data-stop="1">?</button></div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:12px;font-style:italic">Todos los montos son netos (después de retenciones)</div>
 
-          <!-- ═══════════════ SECCIÓN 1: GLOBAL DEL MES ═══════════════ -->
-          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:10px">💼 Global del mes</div>
+          <!-- ═══════════════ RENTAS DEL MES ═══════════════ -->
+          <div data-action="verEsperadoCobranza" style="text-align:center;padding:2px 0 14px;cursor:pointer">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)">Rentas de ${_mesActualLbl.split(' ')[0]}</div>
+            <div style="font-size:34px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-1px;line-height:1.1;margin-top:3px">${fmt(totalEsperadoNeto)}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">esperado del mes &nbsp;›</div>
+          </div>
 
-          <!-- Cards Total a ingresar / Recibido del mes -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <div data-action="verTotalAIngresar" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .15s" onmouseover="this.style.background='var(--accent-light)'" onmouseout="this.style.background='var(--surface2)'" title="Ver desglose de total a ingresar">
-              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.4px">Total a ingresar</div>
-              <div style="font-size:17px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:var(--text2);margin-top:4px">${fmt(totalEsperadoNeto + vencidoMesesAnteriores)}</div>
-              <div style="font-size:9px;color:var(--text3);margin-top:3px">Rentas + vencido anterior</div>
+          <!-- Barra de tres colores: cobrado · en plazo · vencido. Suman 100 por construcción. -->
+          <div style="display:flex;height:22px;border-radius:6px;overflow:hidden;margin-bottom:10px;background:var(--border)">
+            <div style="width:${_pctCobradoBar}%;background:linear-gradient(90deg,#15803d,#22c55e)"></div>
+            <div style="width:${_pctEnPlazoBar}%;background:#fcd34d"></div>
+            <div style="width:${_pctVencidoBar}%;background:#ef4444"></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+            <div data-action="verCobrosDelMes" style="cursor:pointer;min-width:0">
+              <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--success)">● Cobrado</div>
+              <div style="font-size:15px;font-weight:800;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(totalCobradoNeto)}</div>
+              <div style="font-size:9px;color:var(--text3)">${_pctCobradoBar}% ›</div>
             </div>
-            <div data-action="verCobradoCalendarMes" style="background:rgba(22,163,74,0.05);border:1.5px solid var(--success);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(22,163,74,0.1)'" onmouseout="this.style.background='rgba(22,163,74,0.05)'" title="Ver detalle de cobros del mes">
-              <div style="font-size:10px;font-weight:700;color:var(--success);text-transform:uppercase;letter-spacing:.4px">💵 Recibido del mes</div>
-              <div style="font-size:17px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:var(--success);margin-top:4px">${fmt(totalCobradoCalendarMes)}</div>
-              <div style="font-size:9px;color:var(--text3);margin-top:3px">Incluye adelantos y vencidos</div>
+            <div data-action="verPendientesTotal" style="cursor:pointer;min-width:0">
+              <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#b45309">● En plazo</div>
+              <div style="font-size:15px;font-weight:800;color:#b45309;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(_enPlazoMes)}</div>
+              <div style="font-size:9px;color:var(--text3)">${_pctEnPlazoBar}% ›</div>
+            </div>
+            <div data-action="verVencidoDelMes" style="cursor:pointer;min-width:0">
+              <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--danger)">● Vencido</div>
+              <div style="font-size:15px;font-weight:800;color:var(--danger);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(vencidoDelMes)}</div>
+              <div style="font-size:9px;color:var(--text3)">${_pctVencidoBar}% ›</div>
             </div>
           </div>
 
-          <!-- Vencido (solo si hay) -->
-          ${_vencidoHtml}
-
-          <!-- ═══════════════ SECCIÓN 2: RENTAS DEL MES ═══════════════ -->
-          <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:10px">🗓️ Rentas del mes</div>
-
-            <!-- Rentas por recibir del mes -->
-            <div data-action="verEsperadoCobranza" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background .15s;margin-bottom:10px" onmouseover="this.style.background='var(--accent-light)'" onmouseout="this.style.background='var(--surface2)'">
-              <div>
-                <div style="font-size:12px;color:var(--text);font-weight:700">📋 Rentas por recibir del mes</div>
-                <div style="font-size:10px;color:var(--text3);margin-top:1px">Esperado solo de las rentas de ${_mesActualLbl.split(' ')[0]}</div>
-              </div>
-              <div style="display:flex;align-items:center;gap:6px">
-                <span style="color:var(--text2);font-weight:800;font-family:Inter,sans-serif;font-variant-numeric:tabular-nums;font-size:16px">${fmt(totalEsperadoNeto)}</span>
-                <span style="color:var(--text3);opacity:0.7;font-size:14px">›</span>
-              </div>
+          <!-- Vencido que arrastra de meses pasados (sólo si hay) -->
+          ${vencidoMesesAnteriores >= 1 ? `<div style="margin-top:12px;padding-top:11px;border-top:1px dashed var(--border)">
+            <div data-action="verVencidoAnteriores" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+              <span style="font-size:12px;color:var(--danger);font-weight:700">🔴 Vencido de meses pasados</span>
+              <span style="font-size:15px;font-weight:800;color:var(--danger);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(vencidoMesesAnteriores)} <span style="color:var(--text3);font-weight:400;font-size:13px">›</span></span>
             </div>
-
-            <!-- Par Cobrado / Pendiente -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-              <div data-action="verCobrosDelMes" style="background:rgba(22,163,74,0.05);border:1.5px solid var(--success);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(22,163,74,0.1)'" onmouseout="this.style.background='rgba(22,163,74,0.05)'">
-                <div style="font-size:10px;font-weight:700;color:var(--success);text-transform:uppercase;letter-spacing:.4px">💰 Cobrado de rentas del mes</div>
-                <div style="font-size:17px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:var(--success);margin-top:4px">${fmt(totalCobradoNeto)}</div>
-              </div>
-              ${_totalPendienteReal > 0.5 ? `<div data-action="verPendientesTotal" style="background:rgba(217,119,6,0.06);border:1px solid #fcd34d;border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(217,119,6,0.12)'" onmouseout="this.style.background='rgba(217,119,6,0.06)'">
-                <div style="font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.4px">⏳ Pendiente de rentas del mes</div>
-                <div style="font-size:17px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:#b45309;margin-top:4px">${fmt(_totalPendienteReal)}</div>
-              </div>` : `<div style="background:rgba(22,163,74,0.05);border:1px solid var(--success);border-radius:10px;padding:12px;text-align:center">
-                <div style="font-size:10px;font-weight:700;color:var(--success);text-transform:uppercase;letter-spacing:.4px">✅ Pendiente de rentas del mes</div>
-                <div style="font-size:17px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:var(--success);margin-top:4px">$0</div>
-              </div>`}
-            </div>
-
-            <!-- Barra de progreso -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;background:linear-gradient(90deg,#15803d,#22c55e);border-radius:4px;width:${_pctCobrado}%"></div></div>
-              <span style="font-size:12px;font-weight:700;color:var(--success)">${_pctCobrado}%</span>
-            </div>
-          </div>
+          </div>` : ''}
 
           <!-- Chips de estado -->
           ${_chipsHtml}
+
+          <!-- Entró a caja este mes, con sus dos partes sangradas: son PARTE de ese total,
+               no cantidades aparte. El mismo criterio que "A favor" dentro de "Al día". -->
+          <div style="margin-top:12px;padding-top:11px;border-top:1px dashed var(--border)">
+            <div data-action="verCobradoCalendarMes" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:5px">
+              <span style="font-size:11.5px;color:var(--text2);font-weight:600">💵 Entró a caja este mes</span>
+              <span style="font-size:14px;font-weight:700;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(totalCobradoCalendarMes)} <span style="color:var(--text3);font-weight:400;font-size:13px">›</span></span>
+            </div>
+            ${_atrasosCobrados >= 1 ? `<div data-action="verCobradoCalendarMes" data-arg="vencido" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding-left:14px;margin-bottom:5px">
+              <span style="font-size:11px;color:var(--text3)">⏮️ de eso, rentas atrasadas cobradas</span>
+              <span style="font-size:13px;font-weight:700;color:var(--text2);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_atrasosCobrados)} <span style="color:var(--text3);font-weight:400">›</span></span>
+            </div>` : ''}
+            ${_adelantosCobrados >= 1 ? `<div data-action="verCobradoCalendarMes" data-arg="adelanto" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding-left:14px">
+              <span style="font-size:11px;color:var(--text3)">✨ de eso, rentas pagadas por adelantado</span>
+              <span style="font-size:13px;font-weight:700;color:var(--text2);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_adelantosCobrados)} <span style="color:var(--text3);font-weight:400">›</span></span>
+            </div>` : ''}
+          </div>
 
           <!-- Botón expandible formas de pago -->
           ${fpArr.length > 0 ? `<button data-action="toggleDashCobranza" style="width:100%;background:transparent;border:none;padding:12px 0 0;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;border-top:1px solid var(--border);margin-top:14px;text-transform:uppercase;letter-spacing:.5px">
@@ -21773,14 +21773,31 @@ function verPendientesTodas() {
 }
 // FIX TOTAL-COBRADO-CALENDAR: muestra TODOS los pagos recibidos en el mes calendario
 // (renta del mes + vencidas de meses anteriores + adelantos), categorizados.
-function verCobradoCalendarMes() {
+function verCobradoCalendarMes(filtro) {
+  // FIX COBRANZA-D (2026-10): este modal YA separaba los cobros del mes en del-mes /
+  // vencidos / adelantos. El pie de Cobranza ahora abre dos de esas categorías por su
+  // cuenta, así que en vez de escribir dos funciones nuevas acepta un filtro y reusa todo
+  // lo demás: una sola vista que mantener en vez de tres que se pueden desalinear.
+  // OJO: el despachador pasa el EVENTO como primer argumento cuando el elemento no trae
+  // data-arg, así que todo lo que no sea texto se descarta — si no, al tocar "Entró a caja"
+  // llegaría un MouseEvent como filtro y no coincidiría con ningún caso.
+  if (typeof filtro !== 'string') filtro = '';
   var allCobros = window._cobrosDelMesAll || [];
+  // La precedencia adelanto-sobre-vencido es la misma que usa la etiqueta de cada renglón
+  // más abajo y la que usa la tarjeta de Cobranza al sumar. Si se separaran, el total del
+  // pie y la lista de este modal dirían cosas distintas.
+  if (filtro === 'vencido') allCobros = allCobros.filter(function(a){ return a.esVencido && !a.esAdelanto; });
+  else if (filtro === 'adelanto') allCobros = allCobros.filter(function(a){ return a.esAdelanto; });
   if (!allCobros.length) return;
 
   var _hoy = new Date();
   var _mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   var _mesLbl = _mesNombres[_hoy.getMonth()] + ' ' + _hoy.getFullYear();
-  document.getElementById('fpAbonos-title').innerHTML = '💵 Pagos recibidos en ' + _mesLbl;
+  var _lblCat = filtro === 'vencido' ? 'Rentas atrasadas cobradas'
+              : filtro === 'adelanto' ? 'Rentas pagadas por adelantado'
+              : 'Pagos recibidos en ' + _mesLbl;
+  var _icoCat = filtro === 'vencido' ? '⏮️ ' : filtro === 'adelanto' ? '✨ ' : '💵 ';
+  document.getElementById('fpAbonos-title').innerHTML = _icoCat + _lblCat + (filtro ? ' en ' + _mesLbl : '');
 
   // Ordenar por fecha desc
   allCobros = allCobros.slice().sort(function(a,b) { return (b.fecha || '').localeCompare(a.fecha || ''); });
@@ -21796,14 +21813,19 @@ function verCobradoCalendarMes() {
 
   // Resumen total
   html += '<div style="background:var(--success-light);border:1px solid rgba(22,163,74,0.2);border-radius:10px;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">';
-  html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--success);font-weight:600">Pagos recibidos en ' + _mesLbl + '</div>';
+  html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--success);font-weight:600">' + _lblCat + '</div>';
   html += '<div style="font-size:10px;color:var(--text3);margin-top:1px">' + allCobros.length + ' pago' + (allCobros.length !== 1 ? 's' : '') + ' físicos en el mes</div></div>';
   html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:22px;font-weight:800;color:var(--success)">' + fmt(total) + '</div></div>';
 
   // Nota aclaratoria
-  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:0 4px;line-height:1.4">💡 Pagos con fecha en ' + _mesLbl + ' (sin importar a qué mes apliquen). Incluye vencidos cobrados y rentas del mes.</div>';
+  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:0 4px;line-height:1.4">💡 '
+    + (filtro === 'vencido' ? 'Pagos recibidos en ' + _mesLbl + ' que cubren meses ANTERIORES. Ya estaban vencidos y se pusieron al corriente.'
+     : filtro === 'adelanto' ? 'Pagos recibidos en ' + _mesLbl + ' que cubren meses FUTUROS. No cuentan para la barra del mes, que sólo mide ' + _mesLbl + '.'
+     : 'Pagos con fecha en ' + _mesLbl + ' (sin importar a qué mes apliquen). Incluye vencidos cobrados y rentas del mes.')
+    + '</div>';
 
-  // Desglose por categoría
+  // Desglose por categoría — sólo en la vista completa: filtrada hay una sola categoría.
+  if (!filtro) {
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:16px">';
   if (_totalDelMes > 0) {
     html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">';
@@ -21824,6 +21846,7 @@ function verCobradoCalendarMes() {
     html += '<div style="font-size:9px;color:var(--text3)">' + _adelantos.length + ' pago' + (_adelantos.length !== 1 ? 's' : '') + '</div></div>';
   }
   html += '</div>';
+  }
 
   // Lista detallada
   html += '<div style="max-height:50vh;overflow-y:auto">';
