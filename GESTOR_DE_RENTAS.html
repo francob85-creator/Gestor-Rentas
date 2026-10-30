@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v141 · 30-oct-2026';
+var APP_VERSION = 'v142 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14202,7 +14202,7 @@ function renderDashboard() {
             <div style="font-size:15px;font-weight:800;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(ingresoActual)}</div>
             <div style="font-size:12px;font-weight:700;color:var(--success)">${_pctActualP}% ›</div>
           </div>
-          <div data-action="dashGoRentas" data-arg="rentadas" style="cursor:pointer;min-width:0">
+          <div data-action="dashGoRentas" data-arg="por-iniciar" style="cursor:pointer;min-width:0">
             <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#b45309">● Por iniciar</div>
             <div style="font-size:15px;font-weight:800;color:#b45309;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(ingresoPorIniciar)}</div>
             <div style="font-size:12px;font-weight:700;color:#b45309">${_pctIniciarP}% ›</div>
@@ -14218,7 +14218,7 @@ function renderDashboard() {
         <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px dashed var(--border)">
           <span data-action="dashGoRentas" data-arg="all" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--text2)">🏠 Total <strong style="font-weight:800">${total}</strong></span>
           <span data-action="dashGoRentas" data-arg="rentadas" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✅ Rentadas <strong style="font-weight:800">${_rentadasActivas}</strong></span>
-          ${propsPorIniciar > 0 ? `<span data-action="dashGoRentas" data-arg="rentadas" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fef3c7;color:var(--warning)">⏳ Por iniciar <strong style="font-weight:800">${propsPorIniciar}</strong></span>` : ''}
+          ${propsPorIniciar > 0 ? `<span data-action="dashGoRentas" data-arg="por-iniciar" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fef3c7;color:var(--warning)">⏳ Por iniciar <strong style="font-weight:800">${propsPorIniciar}</strong></span>` : ''}
           <span data-action="dashGoRentas" data-arg="sin-rentar" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fee2e2;color:var(--danger)">🔑 Sin rentar <strong style="font-weight:800">${vacias}</strong></span>
         </div>
 
@@ -21459,12 +21459,30 @@ function _verPropiedadesEnModal(filtro, _tituloOverride) {
       return true;
     });
     titulo = '🔑 Propiedades rentadas';
+  } else if (filtro === 'por-iniciar') {
+    // FIX PORTAFOLIO-POR-INICIAR (2026-10): filtro propio. Antes no existía, así que el monto
+    // "Por iniciar" de Mi Portafolio apuntaba a "rentadas" y abría la lista equivocada — lo
+    // reportó Franco. Mismo criterio que usa el KPI: tiene inquilino, pero su contrato empieza
+    // DESPUÉS del mes en curso. Se compara por mes, igual que allá, para que la lista y la
+    // cifra no puedan separarse.
+    var _hoyPI = new Date();
+    var _mesPI = _hoyPI.getFullYear() + '-' + String(_hoyPI.getMonth()+1).padStart(2,'0');
+    props = props.filter(function(r) {
+      if (!r.clienteId || r.clienteId === '') return false;
+      var _cliPI = _getCliMap()[r.clienteId];
+      var _iniRawPI = r.inicio || (_cliPI && _cliPI.inicioContrato) || r.createdAt || '';
+      var _iniMesPI = _iniRawPI ? _iniRawPI.slice(0,7) : '';
+      return !!(_iniMesPI && _iniMesPI > _mesPI);
+    });
+    titulo = '⏳ Propiedades por iniciar';
   } else if (filtro === 'sin-rentar') {
+    // FIX PORTAFOLIO-POR-INICIAR: este filtro devolvía TAMBIÉN las de contrato por empezar, así
+    // que la lista traía más propiedades de las que decía la cifra de "Sin rentar" de la
+    // tarjeta, que sólo cuenta las que no tienen inquilino. Ahora cada una tiene su lista.
     props = props.filter(function(r) {
       if (!r.clienteId || r.clienteId === '') return true;
       if (r.bajaProgramada) return true;
-      var _st = getStatusRenta(r);
-      return _st && _st.estado === 'pendiente-inicio';
+      return false;
     });
     titulo = '🔓 Propiedades sin rentar';
   } else if (filtro === 'atrasado') {
