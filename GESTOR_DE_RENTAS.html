@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v137 · 30-oct-2026';
+var APP_VERSION = 'v138 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -5170,6 +5170,65 @@ async function _fbDeleteCliente(clienteId) {
 }
 
 // Apply rentas collection snapshot (Phase 2) — safe upsert/delete by ID
+// FIX HISTORIAL-NO-ENCOGE (2026-10): fusión-unión para lo único de una renta que, si se
+// pierde, NO se puede reconstruir desde ningún lado.
+//
+// CÓMO SE PERDIERON $132,000. Al dar de baja a un inquilino, la baja hace tres cosas en este
+// orden: archiva su ficha CON TODOS SUS PAGOS dentro de renta.historialInquilinos, deja las
+// lápidas de los abonos, y borra esos abonos de la nube. Correcto mientras nadie toque la
+// renta. Pero después llegó una copia VIEJA del documento de la renta —creada antes de la
+// baja— y _applyRentasSnapshot reemplazaba el objeto entero con ella. Esa copia no traía la
+// ficha archivada, ni las lápidas, ni _vacatedAt, porque todavía no existían: al aplicarla se
+// las llevó. Resultado: el inquilino resucitado, la ficha archivada destruida, y sus pagos ya
+// borrados de la nube sin copia en ninguna parte. Le pasó a Claudia en ALEJANDRAS DEPA B.
+//
+// Había una protección anti-stale, pero su lista de campos críticos es clienteId, monto,
+// inicio, fin, dia, bajaProgramada, nombre y tipo: justo lo que SÍ se puede volver a teclear.
+// Lo irrecuperable quedaba fuera. Y sólo actuaba cuando el snapshot era más viejo que la baja;
+// si traía updatedAt más nuevo, ni se intentaba.
+//
+// La cura es la de siempre en este proyecto: al recibir, lo local que el entrante no traiga se
+// PRESERVA. Aquí la unión es segura sin lápidas porque NO existe forma de borrar una ficha del
+// historial (verificado por grep): si falta en una copia, es una pérdida, nunca un borrado
+// querido. Si la misma ficha viene por los dos lados, gana la que traiga más pagos archivados.
+function _mergeHistorialInquilinosUnion(local, entrante) {
+  var _loc = local || [], _ent = entrante || [];
+  if (!_loc.length) return _ent;
+  if (!_ent.length) return _loc;
+  var out = [], vistos = {};
+  var _clave = function(h) {
+    return (h.clienteId || h.nombre || '?') + '|' + (h.inicio || '') + '|' + (h.fin || '');
+  };
+  var _agregar = function(lista) {
+    for (var i = 0; i < lista.length; i++) {
+      var h = lista[i];
+      if (!h) continue;
+      var k = _clave(h), prev = vistos[k];
+      if (prev) {
+        if ((h.abonos || []).length > (prev.abonos || []).length) {
+          out[out.indexOf(prev)] = h; vistos[k] = h;
+        }
+        continue;
+      }
+      vistos[k] = h; out.push(h);
+    }
+  };
+  _agregar(_loc); _agregar(_ent);
+  return out;
+}
+
+// Unión de dos listas de ids/uuids. Las lápidas tampoco pueden encoger: una lápida que se
+// pierde deja la puerta abierta a que un snapshot viejo reviva un abono ya borrado.
+function _unionListaIds(a, b) {
+  var _a = a || [], _b = b || [];
+  if (!_a.length) return _b;
+  if (!_b.length) return _a;
+  var out = _a.slice(), vistos = {}, i;
+  for (i = 0; i < out.length; i++) vistos[out[i]] = true;
+  for (i = 0; i < _b.length; i++) if (!vistos[_b[i]]) { vistos[_b[i]] = true; out.push(_b[i]); }
+  return out;
+}
+
 function _applyRentasSnapshot(snapshot, suppressRender) {
   // FIX META-ONLY (2026-07): descartar snapshots de puro metadata (0 docChanges) si ya se
   // aplicó al menos un snapshot de servidor esta sesión y el snapshot no está vacío.
@@ -5235,6 +5294,30 @@ function _applyRentasSnapshot(snapshot, suppressRender) {
     // Preserve in-memory abonos (from abonos subcollection listener)
     var memRenta = _newMemMap[id];
     fsRenta.abonos = (memRenta && memRenta.abonos) ? memRenta.abonos : [];
+    // FIX HISTORIAL-NO-ENCOGE (2026-10): la unión va AQUÍ, antes de que el flujo se bifurque
+    // en la rama protegida y la normal. Las dos arrancan de Object.assign(local, fsRenta), o
+    // sea que fsRenta manda; fusionando sobre fsRenta quedan cubiertas ambas. La rama normal
+    // —la que corre casi siempre— era por donde se escapaba.
+    if (memRenta) {
+      var _hLocal = (memRenta.historialInquilinos || []).length;
+      var _hEntra = (fsRenta.historialInquilinos || []).length;
+      var _histU = _mergeHistorialInquilinosUnion(memRenta.historialInquilinos, fsRenta.historialInquilinos);
+      if (_histU.length) fsRenta.historialInquilinos = _histU;
+      var _dIds = _unionListaIds(memRenta._deletedAbonoIds, fsRenta._deletedAbonoIds);
+      if (_dIds.length) fsRenta._deletedAbonoIds = _dIds;
+      var _dUuids = _unionListaIds(memRenta._deletedAbonoUuids, fsRenta._deletedAbonoUuids);
+      if (_dUuids.length) fsRenta._deletedAbonoUuids = _dUuids;
+      // _vacatedAt se queda con la marca MÁS RECIENTE: es la que mide si una baja es reciente.
+      var _vMem = Number(memRenta._vacatedAt) || 0, _vFs = Number(fsRenta._vacatedAt) || 0;
+      if (_vMem || _vFs) fsRenta._vacatedAt = Math.max(_vMem, _vFs);
+      // Rastro visible desde el celular (la bitácora sólo captura warn/error): si esta cura
+      // deja de aplicarse algún día, su silencio se nota. Sólo cuando de verdad evitó perder.
+      if (_hLocal > _hEntra) {
+        console.warn('[Sync UNION] Renta ' + id + ': la copia entrante traía ' + _hEntra +
+          ' ficha(s) de inquilino y la memoria ' + _hLocal + ' — se conservan ' + _histU.length +
+          ' (informativo, no es un error).');
+      }
+    }
     // FIX SNAPSHOT-STALE: leer updatedAt antes de borrarlo. Si la renta en memoria
     // tiene una escritura local más reciente (<60s) y el snapshot trae cambios
     // críticos contradictorios (clienteId, monto, inicio, fin, dia, bajaProgramada),
@@ -6885,6 +6968,35 @@ function _applyMainDocSnapshot(data, isExternalUpdate) {
         var _memCli = lr ? (lr.clienteId || '') : '';
         var _docCli = cr.clienteId || '';
         cr.clienteId = _memCli || _docCli;
+        // FIX HISTORIAL-NO-ENCOGE (2026-10): ESTE es el camino por el que se perdieron los
+        // $132,000 de Claudia en ALEJANDRAS DEPA B, no el de la subcolección.
+        // Abajo, `state.rentas = _mainFiltradas` REEMPLAZA el arreglo completo: cada propiedad
+        // queda tal cual la trae el doc principal. Y el arreglo embebido del doc principal
+        // puede estar FÓSIL —de antes de la baja—, sin la ficha archivada del inquilino.
+        // El rescate que viene más abajo salva _vacatedAt y las lápidas, pero (a) nunca salvó
+        // historialInquilinos y (b) vive DENTRO de un if que exige baja reciente (<5 min),
+        // escritura local reciente (<60s) o clienteId local vacío. Pasada esa ventana, o ya
+        // resucitado el inquilino, no se ejecuta nada y el fósil se impone entero.
+        // Por eso esto va FUERA del if, sin condición: lo de abajo es recuperable tecleándolo
+        // otra vez, esto no. Una ficha archivada que se pierde se lleva los pagos con ella,
+        // porque la baja ya los borró de la nube.
+        if (lr) {
+          var _hLocM = (lr.historialInquilinos || []).length;
+          var _hDocM = (cr.historialInquilinos || []).length;
+          var _hUM = _mergeHistorialInquilinosUnion(lr.historialInquilinos, cr.historialInquilinos);
+          if (_hUM.length) cr.historialInquilinos = _hUM;
+          var _dIdsM = _unionListaIds(lr._deletedAbonoIds, cr._deletedAbonoIds);
+          if (_dIdsM.length) cr._deletedAbonoIds = _dIdsM;
+          var _dUuidsM = _unionListaIds(lr._deletedAbonoUuids, cr._deletedAbonoUuids);
+          if (_dUuidsM.length) cr._deletedAbonoUuids = _dUuidsM;
+          var _vLoc = Number(lr._vacatedAt) || 0, _vDoc = Number(cr._vacatedAt) || 0;
+          if (_vLoc || _vDoc) cr._vacatedAt = Math.max(_vLoc, _vDoc);
+          if (_hLocM > _hDocM) {
+            console.warn('[Sync UNION main] Renta ' + cr.id + ': el doc principal traía ' + _hDocM +
+              ' ficha(s) de inquilino y la memoria ' + _hLocM + ' — se conservan ' + _hUM.length +
+              ' (informativo, no es un error).');
+          }
+        }
         // FIX SNAPSHOT-STALE: si la renta tiene escritura local muy reciente (<60s),
         // proteger campos críticos contra cambios contradictorios del main doc.
         // El main doc puede estar desactualizado vs la subcolección (escrita por separado).
