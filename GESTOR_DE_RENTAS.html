@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v140 · 30-oct-2026';
+var APP_VERSION = 'v141 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -13876,6 +13876,11 @@ function renderDashboard() {
   }
 
   var ingresoActual = 0, ingresoPotencial = 0, saldoPendiente = 0;
+  // FIX PORTAFOLIO-POR-INICIAR (2026-10): "Sin rentar" juntaba dos cosas distintas y hacía ver
+  // el portafolio más desocupado de lo que está: propiedades de verdad vacías, y propiedades YA
+  // RENTADAS cuyo contrato todavía no arranca. Caso real: JUAREZ Local D y E, $40,600 al mes,
+  // rentado y con inicio el 01-mar-2027, contaba como desocupado. Ahora se separan.
+  var ingresoPorIniciar = 0, propsPorIniciar = 0;
   var alDia = 0, atrasadas = 0, parciales = 0, aFavor = 0, montoAtrasadas = 0, montoParciales = 0;
   var cobradoDelMes = 0;
   var saldoMesSel = 0;           // Pendiente del mes en curso (renta - pagos)
@@ -13954,7 +13959,9 @@ function renderDashboard() {
       var _inicioMes = _inicioRaw ? _inicioRaw.slice(0,7) : '';
       // Skip if contract started AFTER the selected month
       if (_inicioMes && _inicioMes > _mesSel) {
-        // Property wasn't active this month
+        // Property wasn't active this month — tiene inquilino, pero su contrato aún no empieza.
+        ingresoPorIniciar += monto;
+        propsPorIniciar++;
       } else {
         ingresoActual += monto;
         // Pending for selected month — usar NETO para alinear con saldoVencido (que es neto)
@@ -14108,6 +14115,16 @@ function renderDashboard() {
       // colapsable, ordenado por potencial descendente.
       var _gap = ingresoPotencial - ingresoActual;
       var _pctIngresos = ingresoPotencial > 0 ? Math.round(ingresoActual/ingresoPotencial*100) : 0;
+      // FIX PORTAFOLIO-SIMETRICO (2026-10): el bloque pasa al mismo formato que Cobranza —cifra
+      // grande arriba, barra gruesa de tres colores, tres montos debajo— porque los dos viven en
+      // la misma pantalla y se leían distinto. Franco lo eligió sobre un mockup.
+      // "Sin rentar" se queda con el resto para que las tres rebanadas sumen el potencial exacto
+      // y la barra cierre siempre, igual que en Cobranza.
+      var _vaciasMonto = Math.max(0, _gap - ingresoPorIniciar);
+      var _pctIniciarP = ingresoPotencial > 0 ? Math.min(100, Math.round(ingresoPorIniciar/ingresoPotencial*100)) : 0;
+      var _pctActualP = Math.max(0, Math.min(_pctIngresos, 100 - _pctIniciarP));
+      var _pctVaciasP = Math.max(0, 100 - _pctActualP - _pctIniciarP);
+      var _rentadasActivas = Math.max(0, rentadas - propsPorIniciar);
 
       // Construir el HTML del desglose por tipo (oculto por default)
       // Ordenado de mayor a menor potencial
@@ -14166,48 +14183,43 @@ function renderDashboard() {
         // ─── KPI UNIFICADO: Mi portafolio + Ingresos + Desglose por tipo ───
         { custom: `
         <div class="kpi-label-big">🏠 Mi portafolio <button class="kpi-help-btn" data-action="showKpiHelp" data-arg="portafolio" data-stop="1">?</button></div>
-        <div style="display:flex;gap:0;margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
-          <div data-action="dashGoRentas" data-arg="all" style="flex:1;text-align:center;padding:10px 6px;cursor:pointer;background:var(--surface2);transition:background .2s" onmouseover="this.style.background='var(--accent-light)'" onmouseout="this.style.background='var(--surface2)'">
-            <div style="font-size:20px;font-weight:600;color:var(--text)">${total}</div>
-            <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.3px">Total</div>
-            <div style="font-size:9px;color:var(--text3);margin-top:2px;text-transform:none;letter-spacing:0">Propiedades</div>
+        <div data-action="dashGoRentas" data-arg="all" style="text-align:center;padding:4px 0 14px;cursor:pointer">
+          <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text2)">Potencial</div>
+          <div style="font-size:34px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-1px;line-height:1.1;margin-top:3px">${fmt(ingresoPotencial)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} propiedad${total === 1 ? '' : 'es'} &nbsp;›</div>
+        </div>
+
+        <!-- Barra de tres colores: rentado · por iniciar · sin rentar. Suman 100 por construcción. -->
+        <div style="display:flex;height:22px;border-radius:6px;overflow:hidden;margin-bottom:10px;background:var(--border)">
+          <div style="width:${_pctActualP}%;background:linear-gradient(90deg,#15803d,#22c55e)"></div>
+          <div style="width:${_pctIniciarP}%;background:#fcd34d"></div>
+          <div style="width:${_pctVaciasP}%;background:#ef4444"></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+          <div data-action="dashGoRentas" data-arg="rentadas" style="cursor:pointer;min-width:0">
+            <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--success)">● Rentado actual</div>
+            <div style="font-size:15px;font-weight:800;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(ingresoActual)}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--success)">${_pctActualP}% ›</div>
           </div>
-          <div style="width:1px;background:var(--border)"></div>
-          <div data-action="dashGoRentas" data-arg="rentadas" style="flex:1;text-align:center;padding:10px 6px;cursor:pointer;background:var(--surface2);transition:background .2s" onmouseover="this.style.background='var(--accent-light)'" onmouseout="this.style.background='var(--surface2)'">
-            <div style="font-size:20px;font-weight:600;color:var(--success)">${rentadas}</div>
-            <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.3px">Rentadas</div>
-            <div style="font-size:9px;color:var(--text3);margin-top:2px;text-transform:none;letter-spacing:0">Con inquilino</div>
+          <div data-action="dashGoRentas" data-arg="rentadas" style="cursor:pointer;min-width:0">
+            <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#b45309">● Por iniciar</div>
+            <div style="font-size:15px;font-weight:800;color:#b45309;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(ingresoPorIniciar)}</div>
+            <div style="font-size:12px;font-weight:700;color:#b45309">${_pctIniciarP}% ›</div>
           </div>
-          <div style="width:1px;background:var(--border)"></div>
-          <div data-action="dashGoRentas" data-arg="sin-rentar" style="flex:1;text-align:center;padding:10px 6px;cursor:pointer;background:var(--surface2);transition:background .2s" onmouseover="this.style.background='var(--accent-light)'" onmouseout="this.style.background='var(--surface2)'">
-            <div style="font-size:20px;font-weight:600;color:#b91c1c">${vacias}</div>
-            <div style="font-size:10px;color:#b91c1c;font-weight:600;text-transform:uppercase;letter-spacing:.3px">Sin rentar</div>
-            <div style="font-size:9px;color:var(--text3);margin-top:2px;text-transform:none;letter-spacing:0">Disponibles</div>
+          <div data-action="dashGoRentas" data-arg="sin-rentar" style="cursor:pointer;min-width:0">
+            <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--danger)">● Sin rentar</div>
+            <div style="font-size:15px;font-weight:800;color:var(--danger);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(_vaciasMonto)}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--danger)">${_pctVaciasP}% ›</div>
           </div>
         </div>
 
-        <!-- Bloque de ingresos integrado -->
-        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <div data-action="dashGoRentas" data-arg="all" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent-light)'" onmouseout="this.style.background='var(--surface2)'" title="Ver todas las propiedades">
-              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Potencial</div>
-              <div style="font-size:18px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:var(--text2);margin-top:4px">${fmt(ingresoPotencial)}</div>
-            </div>
-            <div data-action="dashGoRentas" data-arg="rentadas" style="background:rgba(22,163,74,0.05);border:1.5px solid var(--success);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:background .2s" onmouseover="this.style.background='rgba(22,163,74,0.12)'" onmouseout="this.style.background='rgba(22,163,74,0.05)'" title="Ver propiedades rentadas">
-              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">💰 Rentado actual</div>
-              <div style="font-size:18px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;color:var(--success);margin-top:4px">${fmt(ingresoActual)}</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-              <div style="height:100%;background:linear-gradient(90deg,#15803d,#22c55e);border-radius:4px;width:${_pctIngresos}%"></div>
-            </div>
-            <span style="font-size:12px;font-weight:700;color:var(--success);white-space:nowrap">${_pctIngresos}%</span>
-          </div>
-          <div style="display:flex;justify-content:flex-end;align-items:baseline;gap:8px;padding-top:8px;border-top:1px solid var(--border)">
-            <span data-action="dashGoRentas" data-arg="sin-rentar" style="cursor:pointer;font-size:15px;font-weight:800;color:var(--danger);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums">${fmt(_gap)}</span>
-            <span style="font-size:11px;color:var(--danger);font-weight:600">Sin rentar</span>
-          </div>
+        <!-- Conteo de propiedades, como chips (mismo lenguaje que los estados de Cobranza) -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px dashed var(--border)">
+          <span data-action="dashGoRentas" data-arg="all" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--text2)">🏠 Total <strong style="font-weight:800">${total}</strong></span>
+          <span data-action="dashGoRentas" data-arg="rentadas" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#d1fae5;color:var(--success)">✅ Rentadas <strong style="font-weight:800">${_rentadasActivas}</strong></span>
+          ${propsPorIniciar > 0 ? `<span data-action="dashGoRentas" data-arg="rentadas" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fef3c7;color:var(--warning)">⏳ Por iniciar <strong style="font-weight:800">${propsPorIniciar}</strong></span>` : ''}
+          <span data-action="dashGoRentas" data-arg="sin-rentar" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fee2e2;color:var(--danger)">🔑 Sin rentar <strong style="font-weight:800">${vacias}</strong></span>
         </div>
 
         <!-- Botón expandir desglose por tipo -->
@@ -14319,7 +14331,7 @@ function renderDashboard() {
 
           <!-- ═══════════════ RENTAS DEL MES ═══════════════ -->
           <div data-action="verEsperadoCobranza" style="text-align:center;padding:2px 0 14px;cursor:pointer">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)">Rentas de ${_mesActualLbl.split(' ')[0]}</div>
+            <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text2)">Rentas de ${_mesActualLbl.split(' ')[0]}</div>
             <div style="font-size:34px;font-weight:800;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-1px;line-height:1.1;margin-top:3px">${fmt(totalEsperadoNeto)}</div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">esperado del mes &nbsp;›</div>
           </div>
@@ -14335,17 +14347,17 @@ function renderDashboard() {
             <div data-action="verCobrosDelMes" style="cursor:pointer;min-width:0">
               <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--success)">● Cobrado</div>
               <div style="font-size:15px;font-weight:800;color:var(--success);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(totalCobradoNeto)}</div>
-              <div style="font-size:9px;color:var(--text3)">${_pctCobradoBar}% ›</div>
+              <div style="font-size:12px;font-weight:700;color:var(--success)">${_pctCobradoBar}% ›</div>
             </div>
             <div data-action="verPendientesTotal" style="cursor:pointer;min-width:0">
               <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#b45309">● En plazo</div>
               <div style="font-size:15px;font-weight:800;color:#b45309;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(_enPlazoMes)}</div>
-              <div style="font-size:9px;color:var(--text3)">${_pctEnPlazoBar}% ›</div>
+              <div style="font-size:12px;font-weight:700;color:#b45309">${_pctEnPlazoBar}% ›</div>
             </div>
             <div data-action="verVencidoDelMes" style="cursor:pointer;min-width:0">
               <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--danger)">● Vencido</div>
               <div style="font-size:15px;font-weight:800;color:var(--danger);font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;margin-top:2px">${fmt(vencidoDelMes)}</div>
-              <div style="font-size:9px;color:var(--text3)">${_pctVencidoBar}% ›</div>
+              <div style="font-size:12px;font-weight:700;color:var(--danger)">${_pctVencidoBar}% ›</div>
             </div>
           </div>
 
