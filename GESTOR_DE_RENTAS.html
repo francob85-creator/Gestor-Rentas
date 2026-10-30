@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v139 · 30-oct-2026';
+var APP_VERSION = 'v140 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12090,7 +12090,10 @@ function procesarBajasProgramadas(fromSnapshot) {
       // Si no quedó archivado, se aborta esta baja SIN tocar nada: bajaProgramada se conserva,
       // así que se reintenta en la siguiente pasada en vez de perderse.
       var _cliSaliente = r.clienteId;
-      if (typeof registrarSalidaInquilino === 'function') registrarSalidaInquilino(r, _cliSaliente, r.bajaProgramadaMotivo || 'Fin de contrato');
+      // FIX FECHA-SALIDA-IGNORADA: la fecha de salida de una baja PROGRAMADA es el día para el
+      // que se programó, no el día en que la app alcanzó a procesarla (que puede ser después,
+      // si nadie abrió la app ese día).
+      if (typeof registrarSalidaInquilino === 'function') registrarSalidaInquilino(r, _cliSaliente, r.bajaProgramadaMotivo || 'Fin de contrato', r.bajaProgramada);
       var _quedoArchivado = (r.historialInquilinos || []).some(function(h) { return h.clienteId === _cliSaliente; });
       if (!_quedoArchivado) {
         if (!_bajaProgAvisadas[r.id]) {
@@ -17302,8 +17305,23 @@ async function confirmarBajaInquilino() {
   var tipo    = tipoEl ? tipoEl.value : 'programada';
   var renta   = (_getRentaMap()[rentaId] || null);
   if (!renta) return;
-  closeModal('modalBajaInquilino');
   var hoyISO = new Date().toISOString().slice(0,10);
+  // FIX BAJA-BOTON-MIENTE (2026-10): la condición de abajo manda la baja por el camino INMEDIATO
+  // en cuanto la fecha sea de hoy o anterior, sin importar qué botón se haya elegido. O sea que
+  // "Programar baja" con fecha pasada ejecutaba la baja al instante, y el botón decía otra cosa.
+  // Regla que pidió Franco, y es la clara: INMEDIATA es siempre hoy; si quieres otra fecha de
+  // salida, va por PROGRAMADA. Como el campo de fecha se oculta al elegir Inmediata, el valor
+  // tecleado antes sigue ahí sin que se vea: por eso se avisa en vez de aplicarlo en silencio.
+  var _fechaSalida = fecha;
+  if (tipo === 'inmediata' && fecha && fecha !== hoyISO) {
+    if (!await showConfirm(
+          'La baja INMEDIATA se registra con la fecha de HOY (' + fmtDate(hoyISO) + ').\n\n' +
+          'Tenías escrito ' + fmtDate(fecha) + '. Si quieres que el historial guarde esa fecha de ' +
+          'salida, cancela y usa "Programada" con esa fecha.\n\n¿Dar de baja con la fecha de hoy?',
+          {confirmText: 'Sí, con fecha de hoy', cancelText: 'Cancelar'})) return;
+    _fechaSalida = hoyISO;
+  }
+  closeModal('modalBajaInquilino');
   if (tipo === 'inmediata' || fecha <= hoyISO) {
     // FIX BAJA-HISTORIAL (2026-09): antes de archivar y borrar, verificar contra el SERVIDOR que
     // la memoria tenga todos los pagos. La baja archiva lo que hay en memoria y después borra los
@@ -17315,7 +17333,7 @@ async function confirmarBajaInquilino() {
     if (!await _asegurarAbonosCompletosParaBaja(renta, 'BajaInquilino')) return;
     try { var _ua=JSON.parse(localStorage.getItem('gr_unassigned')||'{}'); _ua[renta.id]=Date.now(); localStorage.setItem('gr_unassigned',JSON.stringify(_ua)); } catch(e) {}
     var _cidSalienteB = renta.clienteId;
-    registrarSalidaInquilino(renta, _cidSalienteB, motivo);
+    registrarSalidaInquilino(renta, _cidSalienteB, motivo, _fechaSalida);
     if (!_seArchivoElInquilino(renta, _cidSalienteB, 'BajaInquilino')) return;
     // Clear tenant-specific data — all preserved in historialInquilinos
     // FIX BAJA-RESURRECT: marcar IDs y UUIDs de abonos borrados ANTES de eliminarlos
@@ -23852,13 +23870,31 @@ function verHistorialInquilinos(rentaId) {
 }
 
 // Cuando se desasigna un cliente de una propiedad, guardar en historial
-function registrarSalidaInquilino(renta, clienteIdAnterior, motivo) {
+function registrarSalidaInquilino(renta, clienteIdAnterior, motivo, fechaSalida) {
   var c = state.clientes.find(function(x){ return x.id === clienteIdAnterior; });
   if (!c) return;
   if (!renta.historialInquilinos) renta.historialInquilinos = [];
 
   var inicio = renta.inicio || '';
-  var fin = new Date().toISOString().slice(0,10);
+  // FIX FECHA-SALIDA-IGNORADA (2026-10): el modal pedía una fecha de baja, dejaba teclearla,
+  // y después esta función la ignoraba y archivaba SIEMPRE con la de hoy. Franco dio de baja a
+  // Claudia con fecha 14-ago y el historial decía que había salido el 30-oct. Un campo que se
+  // puede llenar y no se usa es peor que no tenerlo: el registro queda mal y nadie se entera.
+  // Ahora se respeta la que venga, con tres candados — tiene que verse como fecha, no puede ser
+  // futura (una salida no ocurre mañana) y no puede ser anterior al inicio del contrato. Si
+  // falla cualquiera, se cae a hoy, que es el comportamiento de siempre.
+  // Los abonos que se archivan NO se filtran por esta fecha (sólo por `inicio`, ver abajo), así
+  // que una fecha pasada no recorta ni un pago. Verificado antes de tocar.
+  var _hoyRS = new Date().toISOString().slice(0,10);
+  var fin = _hoyRS;
+  if (fechaSalida && /^\d{4}-\d{2}-\d{2}$/.test(fechaSalida)
+      && fechaSalida <= _hoyRS && (!inicio || fechaSalida >= inicio)) {
+    fin = fechaSalida;
+  } else if (fechaSalida && fechaSalida !== _hoyRS) {
+    console.warn('[Baja] Fecha de salida "' + fechaSalida + '" descartada para "' +
+      (renta.nombre || renta.id) + '" (futura, mal formada o anterior al inicio ' + inicio +
+      ') — se archiva con la de hoy.');
+  }
 
   // GUARD C4: dedup — si dos dispositivos procesan la misma baja simultáneamente,
   // evitar que se dupliquen entradas en historialInquilinos
