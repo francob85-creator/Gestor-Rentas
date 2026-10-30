@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v151 · 30-oct-2026';
+var APP_VERSION = 'v152 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -12766,6 +12766,27 @@ function _montoVigenteHoy(renta) {
   return _montoEfectivoEnMes(renta, _hMV.getFullYear() + '-' + String(_hMV.getMonth() + 1).padStart(2, '0'));
 }
 
+// FIX MONTO-BAJA-EN-CERO (2026-10): "cuánto vale esta propiedad al mes" para MOSTRAR.
+// Al dar de baja a un inquilino, renta.monto se pone en 0 a propósito (la propiedad ya no
+// tiene contrato). Las tarjetas de la página de Propiedades leían ese campo crudo, así que
+// ALEJANDRAS DEPA B salía en "$0 por mes" después de la baja de Claudia, mientras el
+// dashboard mostraba sus $16,500 — lo reportó Franco. El dashboard ya tenía el rescate
+// correcto: el último monto conocido del historial de inquilinos.
+// Esa regla estaba escrita TRES veces (renderDashboard ×2 y _verPropiedadesEnModal) y
+// faltaba en una cuarta pantalla. En vez de teclear una cuarta copia —que es justo como se
+// desalinean, ver LA TERCERA LECCIÓN— queda aquí una sola. Las tres copias existentes
+// siguen igual por ahora: unificarlas toca la aritmética del dashboard y es otra tarea.
+function _montoMostrarRenta(renta, mesStr) {
+  var _mes = mesStr;
+  if (!_mes) { var _hMM = new Date(); _mes = _hMM.getFullYear() + '-' + String(_hMM.getMonth() + 1).padStart(2, '0'); }
+  var _m = _montoEfectivoEnMes(renta, _mes);
+  if (_m === 0 && (!renta.clienteId || renta.clienteId === '') && renta.historialInquilinos && renta.historialInquilinos.length) {
+    var _u = renta.historialInquilinos[renta.historialInquilinos.length - 1];
+    if (_u && _u.monto) _m = Number(_u.monto) || 0;
+  }
+  return _m;
+}
+
 function getStatusRenta(renta) {
   if (!renta || !renta.id) return { estado: 'sin-rentar', saldo: 0, saldoVencido: 0,
     totalPagado: 0, totalEsperado: 0, pagadoMes: 0, pagadoMesDebido: 0, mesDebido: '',
@@ -14912,8 +14933,10 @@ function renderRentas() {
       _statusOrderMap[r.id] = (_st && estadoOrder[_st.estado] != null) ? estadoOrder[_st.estado] : 2;
     });
     arr.sort(function(a,b) {
-      var montoA = Number(a.monto) || 0;
-      var montoB = Number(b.monto) || 0;
+      // FIX MONTO-BAJA-EN-CERO: ordenar por el mismo monto que se pinta, si no una tarjeta
+      // que muestra $16,500 se iba hasta el fondo como si valiera $0.
+      var montoA = _montoMostrarRenta(a);
+      var montoB = _montoMostrarRenta(b);
       // Primario: monto desc
       if (montoA !== montoB) return montoB - montoA;
       // Secundario: estado (atrasado > parcial > al-día > sin-rentar)
@@ -14932,7 +14955,9 @@ function renderRentas() {
     var cfg = tipoConfig(tipo);
     // FIX MONTO-VIGENTE (2026-09): el encabezado del grupo en Propiedades sumaba r.monto crudo,
     // así que el mismo grupo mostraba $377,795 aquí y $378,895 en el Dashboard.
-    var totalMonto = rents.reduce(function(s,r) { return s + _montoVigenteHoy(r); }, 0);
+    // FIX MONTO-BAJA-EN-CERO: una propiedad recién dada de baja vale 0 para _montoVigenteHoy
+    // y desaparecía del total del grupo. El helper rescata su último monto conocido.
+    var totalMonto = rents.reduce(function(s,r) { return s + _montoMostrarRenta(r); }, 0);
     var atrasadasCnt = rents.filter(function(r) { var _st=getStatusRenta(r); return _st&&_st.estado === 'atrasado'; }).length;
 
     // Build header
@@ -15009,7 +15034,7 @@ function renderListCard(renta) {
       ${(_bajaProg && renta.clienteId) ? '<div class="baja-prog-strip" style="margin-top:6px;margin-left:-12px;margin-right:-4px;border-radius:6px">Sale el ' + fmtDate(_bajaProg) + ' · ' + _bajaLabel + '</div>' : ''}
     </div>
     <div style="flex-shrink:0;text-align:right;min-width:120px">
-      <div class="list-amount">${fmt(Number(renta.monto)||0)}</div>
+      <div class="list-amount">${fmt(_montoMostrarRenta(renta))}</div>
       <div class="list-amount-sub">por mes</div>
       ${st.saldoFavor > 0
         ? '<div style="font-size:12px;font-weight:700;color:var(--success);margin-top:3px">✨ +' + fmt(st.saldoFavor) + '</div><div style="font-size:10px;color:var(--success)">' + (st.mesesAdelanto > 0 ? st.mesesAdelanto+' mes'+(st.mesesAdelanto>1?'es':'')+' adelantado'+(st.mesesAdelanto>1?'s':'') : 'a favor') + '</div>'
@@ -15053,7 +15078,7 @@ function renderCard(renta) {
     ${_incRowCard}
     <div class="card-amounts">
       <div class="amt-box">
-        <div class="amt-val">${fmt(Number(renta.monto)||0)}</div>
+        <div class="amt-val">${fmt(_montoMostrarRenta(renta))}</div>
         <div class="amt-label">Renta mensual</div>
       </div>
       <div class="amt-box">
