@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v150 · 30-oct-2026';
+var APP_VERSION = 'v151 · 30-oct-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -14815,6 +14815,13 @@ function renderRentas() {
   if (currentFilter !== 'all') {
     if (currentFilter === 'a-favor') {
       filtered = filtered.filter(function(r) { var _st=getStatusRenta(r); return _st&&_st.saldoFavor > 0; });
+    } else if (currentFilter === 'al-dia') {
+      // FIX AL-DIA-INCLUYE-FAVOR (2026-10): "Al día" y "A favor" son dos chips distintos, así
+      // que una propiedad con saldo a favor no puede contar en los dos: sumados daban más que
+      // el total. Mismo criterio que ya rige en Inicio (FIX CHIPS-SUMAN-42). Se cambia aquí y
+      // en _updateRentaFilterCounts a la vez — si sólo se toca uno, el número del chip y su
+      // propia lista dejan de coincidir, que es el bug que esto viene a cerrar.
+      filtered = filtered.filter(function(r) { var _st=getStatusRenta(r); return _st && _st.estado === 'al-dia' && !(_st.saldoFavor > 0); });
     } else if (currentFilter === 'incrementos') {
       // FIX INCREMENTOS-20D: filtrar propiedades con incremento próximo/vencido
       var _incIds = {};
@@ -21484,7 +21491,9 @@ function _updateRentaFilterCounts() {
       var st = getStatusRenta(r);
       if (st.estado === 'atrasado')    counts.atrasado++;
       else if (st.estado === 'parcial') counts.parcial++;
-      else if (st.estado === 'al-dia')  counts['al-dia']++;
+      // FIX AL-DIA-INCLUYE-FAVOR (2026-10): par del filtro de renderRentas. Una propiedad al
+      // día CON saldo a favor cuenta sólo en su chip, no en los dos.
+      else if (st.estado === 'al-dia' && !(st.saldoFavor > 0)) counts['al-dia']++;
       if (st.saldoFavor > 0)           counts['a-favor']++;
       // FIX INICIO-FUTURO: incluir pendiente-inicio como "sin rentar" para el conteo
       if (!r.clienteId || r.clienteId === '' || st.estado === 'pendiente-inicio') counts['sin-rentar']++;
