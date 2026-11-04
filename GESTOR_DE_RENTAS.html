@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v153 · 04-nov-2026';
+var APP_VERSION = 'v154 · 04-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -31339,10 +31339,21 @@ async function confirmarFactura() {
   // Convert string taxRates back to numeric with 6 decimals: "taxRate":"0.160000" → "taxRate":0.160000
   payloadStr = payloadStr.replace(/"taxRate":"(\d+\.\d+)"/g, '"taxRate":$1');
 
-  if (fiscalConfig.env !== 'live') console.log('📋 FiscalAPI Payload:', payloadStr);
+  // FIX CSD-EN-CONSOLA (2026-11): este log imprimia el payload COMPLETO, y ahi viaja el sello
+  // fiscal del emisor — el .cer y el .key en base64 con su contrasena — cada vez que se timbra
+  // fuera de produccion. Cualquiera con la consola abierta, o una captura compartida, se lleva
+  // el CSD. El log se conserva porque ha servido para diagnosticar, pero con el sello tapado.
+  if (fiscalConfig.env !== 'live') {
+    var _logSeguro;
+    try {
+      _logSeguro = JSON.parse(payloadStr);
+      if (_logSeguro.issuer) _logSeguro.issuer.taxCredentials = '[CSD oculto]';
+    } catch(_eLog) { _logSeguro = { _nota: 'payload no imprimible' }; }
+    console.log('📋 FiscalAPI Payload:', JSON.stringify(_logSeguro));
+  }
 
   var baseUrl=getFiscalBaseUrl();
-  fetchWithTimeout(baseUrl+'/api/v4/invoices',{method:'POST',headers:{'Content-Type':'application/json','X-API-KEY':fiscalConfig.apiKey,'X-TENANT-KEY':fiscalConfig.tenant,'X-TIME-ZONE':'America/Mexico_City'},body:payloadStr})
+  fetchWithTimeout(baseUrl+'/api/v4/invoices',{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','X-API-KEY':fiscalConfig.apiKey,'X-TENANT-KEY':fiscalConfig.tenant,'X-TIME-ZONE':'America/Mexico_City'},body:payloadStr})
   .then(function(r){
     return r.text().then(function(text) {
       if (fiscalConfig.env !== 'live') console.log('📋 FiscalAPI Raw Response (' + r.status + '):', text);
@@ -33096,12 +33107,24 @@ async function confirmarComplementoPago() {
   var btn = document.getElementById('btn-confirmar-rep');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Timbrando...'; }
 
-  if (fiscalConfig.env !== 'live') console.log('📋 REP Payload:', JSON.stringify(payload, null, 2));
+  // FIX CSD-EN-CONSOLA (2026-11): mismo caso que en el timbrado normal — aqui tambien se
+  // imprimia el .cer, el .key y la contrasena del emisor. Se tapan.
+  if (fiscalConfig.env !== 'live') {
+    var _repLogSeguro;
+    try {
+      _repLogSeguro = JSON.parse(JSON.stringify(payload));
+      if (_repLogSeguro.issuer) _repLogSeguro.issuer.taxCredentials = '[CSD oculto]';
+    } catch(_eRepLog) { _repLogSeguro = { _nota: 'payload no imprimible' }; }
+    console.log('📋 REP Payload:', JSON.stringify(_repLogSeguro, null, 2));
+  }
 
   fetchWithTimeout(baseUrl + '/api/v4/invoices', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      // FIX ENYE-EN-TRANSITO (2026-11): declarar la codificacion. Sin charset, el receptor
+      // puede leer el cuerpo como Latin-1 y una "n" con virgulilla (UTF-8 C3 B1) llega como
+      // dos caracteres de basura. Ver el bloque gemelo en el timbrado normal.
+      'Content-Type': 'application/json; charset=utf-8',
       'X-API-KEY': fiscalConfig.apiKey,
       'X-TENANT-KEY': fiscalConfig.tenant,
       'X-TIME-ZONE': 'America/Mexico_City'
