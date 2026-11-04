@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v152 · 30-oct-2026';
+var APP_VERSION = 'v153 · 04-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -32582,7 +32582,13 @@ async function confirmarCancelacionFactura() {
 
 
 <!-- MODAL: Complemento de Pago (REP) -->
-<div class="modal-overlay" id="modalComplementoPago" style="display:none" data-action="closeModalBackdrop" data-arg="modalComplementoPago">
+<!-- FIX REP-INVISIBLE (2026-11): este modal traía style="display:none" escrito en la etiqueta.
+     openModal() abre con classList.add('open'), o sea con una CLASE, y un estilo en línea le
+     gana siempre a una clase. Resultado: el botón REP corría su función completa, sin error, y
+     el modal quedaba invisible — "no pasa nada" al picarlo. Comprobado en navegador: con la
+     clase 'open' el display seguía en 'none' aquí, mientras modalCancelarFactura (que no trae
+     el atributo) pasaba a 'flex'. Ningún otro modal-overlay lo trae. -->
+<div class="modal-overlay" id="modalComplementoPago" data-action="closeModalBackdrop" data-arg="modalComplementoPago">
   <div class="modal" style="width:580px;max-width:98vw">
     <div class="modal-title">🟣 Generar Complemento de Pago (REP)</div>
     <input type="hidden" id="rep-rentaId">
