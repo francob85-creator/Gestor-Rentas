@@ -3950,7 +3950,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v154 · 04-nov-2026';
+var APP_VERSION = 'v155 · 04-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -29422,7 +29422,7 @@ async function _scanRecomprimir(paginas, quality, maxDim) {
       <!-- Ambiente y timbres -->
       <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px">
         <div>Ambiente: <strong id="fac-ambiente">🧪 PRUEBAS</strong></div>
-        <div>🎟️ Timbres: <strong id="fac-timbres-disp">0</strong> <span style="font-size:11px;color:var(--text3)">(se usará 1)</span></div>
+        <div>🎟️ Timbres: <strong id="fac-timbres-disp">0</strong> <span id="fac-timbres-nota" style="font-size:11px;color:var(--text3)">(se usará 1)</span></div>
       </div>
 
       <!-- Emisor / Receptor -->
@@ -29709,6 +29709,62 @@ function renderFacturacion() {
 var fiscalConfig = { apiKey:'', tenant:'', env:'test', emisores:[], emisor:{} };
 
 function getFiscalBaseUrl() { return fiscalConfig.env === 'live' ? 'https://live.fiscalapi.com' : 'https://test.fiscalapi.com'; }
+
+// FIX TIMBRES-SALDO-REAL (2026-11): el modal de facturar mostraba state.timbresBalance, un
+// contador que la app lleva por su cuenta y que NUNCA le preguntó nada a FiscalAPI: sube
+// cuando se registra una compra dentro de la app y baja de uno en uno al timbrar. Llegó a
+// decir 924 mientras producción tenía 0, y Franco se enteró hasta que una factura falló con
+// "Saldo insuficiente. Disponible: 0". Un número que promete lo que no sabe es peor que no
+// tenerlo. Ahora se le pregunta a FiscalAPI por /api/v4/kpis —el mismo endpoint que llena su
+// panel— y se muestra el real. Tres reglas:
+//   · NUNCA bloquea: el número local se pinta de inmediato y el real lo sustituye si llega.
+//   · Si la consulta falla o tarda más de 8s, se queda el local y la nota aclara de dónde sale.
+//   · No toca el timbrado: sólo cambia lo que se muestra en pantalla.
+// Usa el fiscalConfig GLOBAL a propósito: es el mismo del que sale la petición que timbra, así
+// que si el timbrado funciona, esta consulta va con las mismas llaves y al mismo ambiente.
+function _mostrarSaldoTimbres() {
+  var el = document.getElementById('fac-timbres-disp');
+  if (!el) return;
+  var _nota = document.getElementById('fac-timbres-nota');
+  var _local = Number(state.timbresBalance) || 0;
+  el.textContent = _local;
+  if (_nota) _nota.textContent = '(se usará 1)';
+  if (!fiscalConfig.apiKey || !fiscalConfig.tenant) return;
+  fetchWithTimeout(getFiscalBaseUrl() + '/api/v4/kpis', {
+    headers: {
+      'X-API-KEY': fiscalConfig.apiKey,
+      'X-TENANT-KEY': fiscalConfig.tenant,
+      'X-TIME-ZONE': 'America/Mexico_City'
+    }
+  }, 8000)
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    var lista = (d && d.data) || [];
+    var _real = null;
+    for (var i = 0; i < lista.length; i++) {
+      if (lista[i] && lista[i].name === 'Timbres disponibles' && lista[i].total != null) {
+        _real = Number(lista[i].total) || 0;
+        break;
+      }
+    }
+    if (_real === null) {
+      if (_nota) _nota.textContent = '(saldo de la app · se usará 1)';
+      console.warn('[Timbres] FiscalAPI respondió pero su respuesta no traía "Timbres disponibles" — se deja el contador de la app. Informativo, no es un error.');
+      return;
+    }
+    el.textContent = _real;
+    if (_nota) _nota.textContent = '(real en FiscalAPI · se usará 1)';
+    if (_real !== _local) {
+      console.warn('[Timbres] El contador de la app decía ' + _local + ' y FiscalAPI reporta ' +
+        _real + ' — se muestra el real. Informativo, no es un error.');
+    }
+  })
+  .catch(function(e) {
+    if (_nota) _nota.textContent = '(saldo de la app · se usará 1)';
+    console.warn('[Timbres] No se pudo consultar el saldo real a FiscalAPI: ' + (e && e.message) +
+      ' — se muestra el contador de la app. Informativo, no es un error.');
+  });
+}
 
 async function guardarCredencialesFiscal() {
   try {
@@ -30690,7 +30746,7 @@ async function facturarMes(rentaId) {
   if (_claveProdEl1) _claveProdEl1.value = (state.fiscalConfig && state.fiscalConfig.producto && state.fiscalConfig.producto.clave) || '80131502';
   document.getElementById('fac-periodo').textContent = mesNombre;
   document.getElementById('fac-ambiente').textContent = fiscalConfig.env === 'live' ? '🟢 PRODUCCIÓN' : '🧪 PRUEBAS';
-  document.getElementById('fac-timbres-disp').textContent = state.timbresBalance || 0;
+  _mostrarSaldoTimbres(); // FIX TIMBRES-SALDO-REAL: pregunta el saldo real a FiscalAPI
   // Predial badge
   // FIX PREDIAL-EN-PROPIEDAD: el predial vive ahora en r.facturacion.predial.
   // Fallback a cliente.facturacion.predial para datos legacy.
@@ -30800,7 +30856,7 @@ async function facturarAbono(rentaId, abonoId) {
   if (_claveProdEl2) _claveProdEl2.value = (state.fiscalConfig && state.fiscalConfig.producto && state.fiscalConfig.producto.clave) || '80131502';
   document.getElementById('fac-periodo').textContent = mesNombre;
   document.getElementById('fac-ambiente').textContent = fiscalConfig.env === 'live' ? '🟢 PRODUCCIÓN' : '🧪 PRUEBAS';
-  document.getElementById('fac-timbres-disp').textContent = state.timbresBalance || 0;
+  _mostrarSaldoTimbres(); // FIX TIMBRES-SALDO-REAL: pregunta el saldo real a FiscalAPI
   // Predial badge
   // FIX PREDIAL-EN-PROPIEDAD: leer primero de la propiedad
   var _predialFinalA = (renta.facturacion && renta.facturacion.predial)
