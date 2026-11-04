@@ -205,7 +205,10 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX HEADER-OFFSET-OBSERVER`, `FIX VH-IOS`, `FIX HISTORIAL-INQUILINO-ANTERIOR`,
 `FIX VENCIDO-SOBRE-ESCRIBE-STATUS`, `FIX SONDA-DIA-COBRO`, `FIX RESIDUO-PENDIENTE`,
 `FIX COBRANZA-D`, `FIX ESPERADO-INFLADO`, `FIX HISTORIAL-NO-ENCOGE`,
-`FIX EX-INQUILINO-RESUCITA`, `FIX FECHA-SALIDA-IGNORADA`, `FIX BAJA-BOTON-MIENTE`.
+`FIX EX-INQUILINO-RESUCITA`, `FIX FECHA-SALIDA-IGNORADA`, `FIX BAJA-BOTON-MIENTE`,
+`FIX PENDIENTES-FILTRO`, `FIX INCREMENTO-NO-LLEGA-A-MONTO`, `FIX FAVOR-MUESTRA-RENTA`,
+`FIX AL-DIA-INCLUYE-FAVOR`, `FIX MONTO-BAJA-EN-CERO`, `FIX REP-INVISIBLE`,
+`FIX ENYE-EN-TRANSITO`, `FIX CSD-EN-CONSOLA`, `FIX TIMBRES-INFO-FISCALAPI`.
 
 ---
 
@@ -611,6 +614,64 @@ arregla en los dos lados a la vez.
 
 ---
 
+# LA CUARTA LECCIÓN: UN DATO QUE NO ENTIENDES NO ESTÁ MAL
+
+El 4-nov-2026, arreglando que el modal de facturar dijera "924 timbres" mientras FiscalAPI
+respondía *"Saldo insuficiente. Disponible: 0"*, di por hecho que ese 924 era basura: un
+contador que la app lleva sola y que nunca le pregunta nada a nadie. Lo **sustituí** por el
+saldo real de FiscalAPI, y lo publiqué (v155).
+
+Franco lo corrigió en una línea: *"los 924 timbres son los que el usuario compró en GestorRenta
+y los que le quedan, no los que están disponibles en FiscalAPI"*.
+
+Las dos cifras eran **correctas**. Una es el inventario que ese usuario compró dentro del
+producto; la otra, lo que hay en la cuenta de FiscalAPI. Sustituir la primera por la segunda le
+habría mostrado a un cliente de pago un número que no es suyo. La cura buena era la que pidió
+él: cada una en su lugar, y la de FiscalAPI **debajo**, como dato informativo (v156).
+
+**Antes de declarar que un número miente, pregunta qué significa.** Un campo que no cuadra con
+tu modelo mental casi siempre significa que el modelo mental está incompleto, no que el dato
+esté roto. Y en un producto que se le vende a terceros, confundir un dato del negocio con un bug
+sale más caro que el bug.
+
+## Dos pruebas que cerraron casos sin gastar nada
+
+- **La misma variable que se guarda y se envía es una prueba gratis.** Las facturas llegaban al
+  SAT con la ñ rota (`RivereÃ±a`). `desc` entra al payload en la línea 31348 y se guarda como
+  `descripcionFactura` en la 31514, sin reasignarse en medio. Como lo guardado estaba **limpio**
+  en seis respaldos, lo enviado también lo estaba: el daño es del otro lado. Caso cerrado sin
+  timbrar una sola factura de prueba.
+- **Correr dos versiones lado a lado en un navegador real.** El botón REP no hacía nada, sin
+  error ninguno. Cargando v151 y v152 en Chromium y midiendo `getComputedStyle().display`
+  después de `classList.add('open')`: el modal del REP daba `none` y el de cancelar `flex`. La
+  causa era un `style="display:none"` escrito en la etiqueta, que le gana a cualquier clase. Un
+  minuto de medición contra horas de leer código.
+
+## Lo que no está permitido, está prohibido
+
+Las reglas de Firebase Storage sólo cubrían `fichas/`. Las otras **cinco** carpetas que usa la
+app —`facturas`, `comprobantes`, `clientes`, `emisores`, `complementos`— **nunca tuvieron
+permiso**, y nadie se enteró en meses: los XML y los QR de las facturas fallaban al guardarse y
+al leerse, en silencio, con un `console.warn` que nadie miraba.
+
+Al agregar una carpeta nueva en Storage, **su regla va en el mismo cambio.** Y si algo binario
+"a veces no aparece", mira las reglas antes que el código.
+
+Corolario del mismo caso: `_uploadBase64ToStorage` dice en su comentario *"fallback: keep base64
+in state"*, pero quien la llama descarta el valor si viene en base64 — o sea, **la red de
+seguridad no está conectada**. Un comentario no es una garantía: sigue el valor de retorno hasta
+donde se usa.
+
+## Otra vez: protege TODOS los caminos
+
+El contador de timbres se muestra en **cuatro** lugares —el modal de facturar, la tarjeta grande
+de Facturación, la línea de estado "Producción — N entidades — N timbres", y una **guardia que
+bloquea el timbrado**— y la primera entrega tocó uno solo. Es el mismo error que ya está escrito
+dos veces en este archivo. Antes de dar por cerrado el cambio de un número, **`grep` del campo**
+y cuenta cuántos lo pintan.
+
+---
+
 # DESPLIEGUE (lo hace Franco)
 
 `git push` → esperar 1-2 min a GitHub Pages → abrir Safari con `?v=NN` (el número nuevo de
@@ -640,6 +701,29 @@ volver a agregar la PWA.
   Pasó con los $41,000 de Lisboa #186-B y los $25,000 de TAMESIS DEPA F. Sin diagnosticar por
   qué sobrevivió a la limpieza; la hipótesis es un snapshot stale de otro dispositivo
   reescribiéndolo, pero **no está comprobado**.
+- **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
+  texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
+  peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
+  Reportado a FiscalAPI el 4-nov con dos UUID de referencia, uno correcto del 2-oct
+  (`7d4fe25e-7d79-4070-994b-7b39a8ccd44d`) y uno dañado del 3-nov
+  (`d37421cb-b803-419b-a1ea-7caa0c21c675`). Mientras tanto, los conceptos afectados se escriben
+  sin acentos a mano. **No meter código que los quite automáticamente** sin que Franco lo pida:
+  sería tapar el bug de otro cambiando en silencio el texto de sus facturas.
+- **La guardia de timbrado usa el contador local** (`if ((state.timbresBalance || 0) <= 0)`):
+  bloquea y saca de la pantalla sin preguntarle nada a FiscalAPI. Puede impedir facturar
+  teniendo timbres reales, y deja pasar cuando no los hay. FiscalAPI ya rechaza por su cuenta
+  con "Saldo insuficiente", así que la guardia no agrega seguridad, sólo bloqueos falsos.
+- **El flujo de complemento de pago (REP) no llama a `descontarTimbre()`**, a diferencia del
+  timbrado normal, aunque un REP sí consume un timbre real.
+- **La regla "cuánto vale esta propiedad al mes" está escrita cuatro veces.** Una es
+  `_montoMostrarRenta()` (la buena); las otras tres siguen en línea dentro de `renderDashboard`
+  (×2) y `_verPropiedadesEnModal`. Unificarlas toca la aritmética del dashboard: necesita PLAN
+  DE CAMBIO y comparación antes/después sobre los respaldos.
+- **Datos por decidir, de los barridos de oct-nov 2026** (todos verificados, ninguno tocado):
+  TAMESIS DEPA B sin pago en septiembre y con el cambio de inquilino sin registrar; LOCAL JUAREZ
+  Local 1, 2 y 3 con pago y depósito de julio contra un contrato que inicia en septiembre;
+  depósitos de La Rivereña ($96,000) y TAMESIS DEPA F ($25,000) sin confirmar de qué inquilino
+  son; Bodega Sarabia con ~$1,049 faltantes de noviembre y $4,400 ya facturados de menos.
 - Arreglo de documento-fósil para **clientes** completo solo a medias.
 - 8 líneas con `const`/`let` heredadas (3999, 4009, 4041, 4042, 13604, 24166, 25486, 25487).
   No rompen nada; emparejarlas solo si Franco lo pide.
