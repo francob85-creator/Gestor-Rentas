@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v156 · 04-nov-2026';
+var APP_VERSION = 'v157 · 11-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -30432,6 +30432,31 @@ async function confirmarMarcarPagado(rentaId, abonoId) {
     }
   } else {
     // ── Pago total ────────────────────────────────────────────────────────
+    // FIX LIQUIDAR-PARCIAL (2026-11): si el abono YA traía pagos a cuenta, mover la bandera de
+    // pagado no alcanza. getStatusRenta, cuando un abono facturado tiene pagosAcuenta, toma la
+    // SUMA de esos pagos como lo realmente depositado (_abonoComoNeto), y esa regla es correcta:
+    // es la que atrapa a quien cubre el subtotal pero no el neto (FIX RENTA-FACTURABLE). Así que
+    // al liquidar sólo se movía la bandera y el dinero del último depósito no quedaba anotado en
+    // ninguna parte: el abono se veía "pagado" y el saldo seguía debiendo la diferencia.
+    // Caso real: Bodega Tajito 1, octubre. Factura de $24,979.99 con un parcial de $12,489.99.
+    // Al liquidar los otros $12,490 el Inicio los siguió contando como vencidos de meses
+    // anteriores. Ese depósito SÍ ocurrió; lo único que faltaba era escribirlo.
+    // Sólo aplica cuando ya hay pagos a cuenta y se quedan cortos. Sin ellos no cambia nada:
+    // _abonoComoNeto usa el subtotal de la factura y esas cuentas ya salían bien, que es la
+    // razón por la que esto nunca se había notado.
+    var _yaPagTot = (abono.pagosAcuenta || []).reduce(function(s,p){ return s + Number(p.monto||0); }, 0);
+    var _montoTot = Number(abono.monto) || 0;
+    // Umbral de $1, la regla de la casa (FIX RESIDUO-PENDIENTE): por debajo de un peso es
+    // residuo de redondeo de IVA/retenciones, no un saldo. Medido sobre el respaldo del 11-nov,
+    // ALEJANDRAS DEPA CASA tiene seis abonos con un centavo de diferencia — anotarles un
+    // "depósito" de $0.01 sería inventar movimientos que nadie hizo.
+    if (abono.pagosAcuenta && abono.pagosAcuenta.length && _montoTot - _yaPagTot >= 1) {
+      var _faltanteTot = Math.round((_montoTot - _yaPagTot) * 100) / 100;
+      abono.pagosAcuenta.push({ id: uid(), monto: _faltanteTot, fecha: fechaPago, metodo: metodo,
+        formaPagoId: fpId, nota: nota || 'Liquidación del saldo' });
+      console.warn('[Pago] ' + (abono.mes || '') + ': se anotó el depósito de liquidación por ' +
+        _faltanteTot + '; antes sólo se movía la bandera de pagado y el saldo no bajaba. Informativo, no es un error.');
+    }
     abono.metodo = metodo;
     abono.formaPagoId = fpId;
     abono.pendientePago = false;
