@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v158 · 12-nov-2026';
+var APP_VERSION = 'v159 · 12-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -5041,7 +5041,10 @@ async function _flushPendingRentaWrites() {
     }
     try {
       renta._localWriteAt = Date.now();
-      var data = _stripRentaForSync(renta);
+      // FIX RENTA-UNDEFINED (2026-11): el mismo saneo que _fbWriteRenta. Esta es la cola de
+      // reintentos: sin sanear aquí, una renta con un campo undefined se reencolaba cada 15s
+      // y el reintento "durable" no podía tener éxito nunca.
+      var data = _sanitizeForFirestore(_stripRentaForSync(renta));
       data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
       data._sessionId = _fbSessionId;
       await col.doc(id).set(data);
@@ -5077,7 +5080,17 @@ async function _fbWriteRenta(renta) {
   // snapshots proteja estos datos contra cached/stale snapshots durante 60s.
   renta._localWriteAt = Date.now();
   try {
-    var data = _stripRentaForSync(renta);
+    // FIX RENTA-UNDEFINED (2026-11): espejo del FIX ABONO-UNDEFINED y del FIX CLIENTE-UNDEFINED.
+    // Firestore rechaza el documento ENTERO si un solo campo vale undefined, y en JS
+    // `{ campo: undefined }` sí crea la llave vacía en vez de omitirla. De los cuatro escritores
+    // de Firestore, éste era el único que hacía set() sin sanear. Por eso la baja de un inquilino
+    // no podía archivar la ficha: registrarSalidaInquilino arma depositoDevuelto, depositoMonto y
+    // depositoDevueltoMonto con `dep ? valor : undefined`, y en una propiedad SIN depósito los
+    // tres quedan undefined — 34 de las 47 propiedades. El documento se rechazaba completo, la
+    // ficha sólo llegaba al doc principal (que sí sanea) y después un snapshot fósil del
+    // documento de la propiedad, sin la ficha, se imponía. Caso LISBOA DEPA E (12-nov-2026).
+    // Se sanea ANTES de colgarle updatedAt para que el centinela serverTimestamp ni pase por ahí.
+    var data = _sanitizeForFirestore(_stripRentaForSync(renta));
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     data._sessionId = _fbSessionId;
     await col.doc(renta.id).set(data);
