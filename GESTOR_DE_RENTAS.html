@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v157 · 11-nov-2026';
+var APP_VERSION = 'v158 · 12-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -17511,6 +17511,15 @@ async function confirmarBajaInquilino() {
     if (!await _asegurarAbonosCompletosParaBaja(renta, 'BajaInquilino')) return;
     try { var _ua=JSON.parse(localStorage.getItem('gr_unassigned')||'{}'); _ua[renta.id]=Date.now(); localStorage.setItem('gr_unassigned',JSON.stringify(_ua)); } catch(e) {}
     var _cidSalienteB = renta.clienteId;
+    // FIX BAJA-ORDEN-DESTRUCTIVO (2026-11): foto del estado ANTES de archivar y vaciar, para
+    // poder dejar la propiedad como estaba si la escritura a la nube no aterriza.
+    var _bajaSnap = {
+      clienteId: renta.clienteId, inicio: renta.inicio, fin: renta.fin, dia: renta.dia,
+      monto: renta.monto, deposito: renta.deposito, _vacatedAt: renta._vacatedAt,
+      historialInquilinos: (renta.historialInquilinos || []).slice(),
+      _deletedAbonoIds: (renta._deletedAbonoIds || []).slice(),
+      _deletedAbonoUuids: (renta._deletedAbonoUuids || []).slice()
+    };
     registrarSalidaInquilino(renta, _cidSalienteB, motivo, _fechaSalida);
     if (!_seArchivoElInquilino(renta, _cidSalienteB, 'BajaInquilino')) return;
     // Clear tenant-specific data — all preserved in historialInquilinos
@@ -17529,20 +17538,67 @@ async function confirmarBajaInquilino() {
     // FIX BAJA-RESURRECT: marcar timestamp de baja para protección extendida (5 min)
     // contra snapshots stale que intenten resucitar al ex-inquilino.
     renta._vacatedAt = Date.now();
+    renta.deposito = null;
+    delete renta.bajaProgramada; delete renta.bajaProgramadaMotivo;
     _clearStatusCache(renta.id);
-    // FIX BAJA-RESURRECT: hacer AWAIT del delete para garantizar que los abonos
-    // estén borrados de Firestore ANTES de continuar. Sin await, una sincronización
-    // posterior podía ver abonos viejos y "revivir" al inquilino con su saldo deudor.
+    // FIX BAJA-ORDEN-DESTRUCTIVO (2026-11): el orden estaba invertido y por eso esta es la
+    // quinta vez que la baja se lleva historial. Antes: se borraban los pagos de la nube y
+    // DESPUÉS se escribía la propiedad con la ficha archivada; si esa escritura fallaba, el
+    // error se iba a la consola y el toast decía "Inquilino dado de baja" igual. Resultado en
+    // LISBOA DEPA E (12-nov-2026): los 7 pagos se borraron del servidor, la ficha se quedó sólo
+    // en la memoria de esa computadora, y al recargar la propiedad volvió a aparecer con el
+    // inquilino asignado, sin pagos y debiendo $247,500. La ficha archivada es la ÚNICA copia
+    // de esos pagos una vez borrados: escribirla después de destruir es apostar.
+    // Ahora: primero se PERSISTE la propiedad con la ficha y las lápidas; sólo si esa escritura
+    // se completó se borran los pagos. Si falla, se deshace en memoria y se aborta sin tocar un
+    // solo pago — misma postura que _asegurarAbonosCompletosParaBaja cuando no puede leer el
+    // servidor: ante la duda, no se borra. El peor caso pasa a ser "hay que reintentar la baja"
+    // en vez de "se perdió el historial".
+    var _bajaPersistida = true;
+    if (state._rentasMigratedV2) {
+      _bajaPersistida = false;
+      try {
+        await _fbWriteRenta(renta);
+        // OJO: _fbWriteRenta NUNCA relanza. Atrapa el error del set(), lo encola en
+        // _pendingRentaWrites, avisa con un toast y regresa normal — así que un try/catch
+        // aquí, por sí solo, sería código muerto y la baja seguiría borrando los pagos.
+        // La única señal fiable de que el set() aterrizó es que la renta NO quedó encolada:
+        // en éxito _fbWriteRenta borra su entrada, en fallo la incrementa.
+        _bajaPersistida = (_pendingRentaWrites[renta.id] == null);
+      } catch(e) { console.error('[BajaInquilino] _fbWriteRenta fail:', e); }
+    }
+    if (!_bajaPersistida) {
+      renta.clienteId = _bajaSnap.clienteId;
+      renta.inicio = _bajaSnap.inicio;
+      renta.fin = _bajaSnap.fin;
+      renta.dia = _bajaSnap.dia;
+      renta.monto = _bajaSnap.monto;
+      renta.deposito = _bajaSnap.deposito;
+      renta.historialInquilinos = _bajaSnap.historialInquilinos;
+      renta._deletedAbonoIds = _bajaSnap._deletedAbonoIds;
+      renta._deletedAbonoUuids = _bajaSnap._deletedAbonoUuids;
+      if (_bajaSnap._vacatedAt === undefined) delete renta._vacatedAt;
+      else renta._vacatedAt = _bajaSnap._vacatedAt;
+      try {
+        var _uaR = JSON.parse(localStorage.getItem('gr_unassigned') || '{}');
+        delete _uaR[renta.id];
+        localStorage.setItem('gr_unassigned', JSON.stringify(_uaR));
+      } catch(eR) { console.warn('[BajaInquilino] no se pudo limpiar gr_unassigned: ' + eR.message); }
+      _clearStatusCache(renta.id);
+      _refreshBajaView(rentaId);
+      console.error('[BajaInquilino] ABORTADA: no se pudo guardar la propiedad en la nube. ' +
+        'No se borró ningún pago; la propiedad quedó como estaba.');
+      showAlert('No se pudo guardar la baja en la nube.\n\nNo se borró ningún pago y la propiedad ' +
+        'quedó exactamente como estaba. Revisa tu conexión y vuelve a intentarlo.', 'error');
+      return;
+    }
+    // FIX BAJA-RESURRECT: AWAIT del delete para que los abonos estén borrados de Firestore
+    // antes de continuar. Sin await, una sincronización posterior podía ver abonos viejos y
+    // "revivir" al inquilino con su saldo deudor. Las lápidas ya viajaron en la escritura de
+    // arriba, así que a partir de aquí ningún snapshot puede resucitarlos.
     try { await _fbDeleteAllAbonosForRenta(renta.id); } // FASE 1
     catch(e) { console.error('[BajaInquilino] _fbDeleteAllAbonosForRenta fail:', e); }
     renta.abonos = [];
-    renta.deposito = null;
-    delete renta.bajaProgramada; delete renta.bajaProgramadaMotivo;
-    // FIX SYNC: await _fbWriteRenta para garantizar que otros dispositivos ven la baja inmediata
-    if (state._rentasMigratedV2) {
-      try { await _fbWriteRenta(renta); }
-      catch(e) { console.error('[BajaInquilino] _fbWriteRenta fail:', e); }
-    }
     forceSave(); showToast('Inquilino dado de baja');
     _refreshBajaView(rentaId);
   } else {
