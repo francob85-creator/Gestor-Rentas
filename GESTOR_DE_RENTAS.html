@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v159 · 12-nov-2026';
+var APP_VERSION = 'v160 · 13-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -17461,7 +17461,35 @@ async function darDeBajaInquilino(rentaId) {
   if (!renta || !renta.clienteId) return;
   if (renta.bajaProgramada) {
     if (await showConfirm('Baja programada para ' + fmtDate(renta.bajaProgramada) + '. ¿Cancelar la baja?', {confirmText: 'Cancelar baja', cancelText: 'No'})) {
+      // FIX CANCELAR-BAJA-NO-PERSISTE (2026-11): esto sólo hacía forceSave(), que guarda el doc
+      // principal pero NO el documento de la propiedad — y ése es el que manda para las rentas.
+      // La baja se borraba de la memoria, el aviso decía "Baja cancelada", y al llegar el
+      // siguiente snapshot `Object.assign({}, local, fsRenta)` volvía a meter bajaProgramada
+      // desde el servidor, que nunca se enteró. El dato regresaba solo y la propiedad seguía
+      // saliendo en "Sin rentar" (caso LISBOA DEPA E, 13-nov-2026). Era el ÚNICO camino del
+      // archivo que tocaba una renta sin escribir su documento: su par de la línea ~17640
+      // (programar la baja) sí lo hace, igual que guardarRenta y la baja inmediata.
+      // Si la escritura no aterriza se deshace y se avisa, en vez de mentir como antes.
+      var _bajaPrev = renta.bajaProgramada, _motivoPrev = renta.bajaProgramadaMotivo;
       delete renta.bajaProgramada; delete renta.bajaProgramadaMotivo;
+      var _cancelPersistida = true;
+      if (state._rentasMigratedV2) {
+        _cancelPersistida = false;
+        try {
+          await _fbWriteRenta(renta);
+          // _fbWriteRenta no relanza: la señal fiable es que no haya quedado encolada.
+          _cancelPersistida = (_pendingRentaWrites[renta.id] == null);
+        } catch(e) { console.error('[CancelarBaja] _fbWriteRenta fail:', e); }
+      }
+      if (!_cancelPersistida) {
+        renta.bajaProgramada = _bajaPrev;
+        if (_motivoPrev === undefined) delete renta.bajaProgramadaMotivo;
+        else renta.bajaProgramadaMotivo = _motivoPrev;
+        console.error('[CancelarBaja] ABORTADA: no se pudo guardar en la nube — la baja programada sigue puesta.');
+        showAlert('No se pudo cancelar la baja en la nube.\n\nLa baja programada sigue puesta tal como estaba. Revisa tu conexión y vuelve a intentarlo.', 'error');
+        if (currentPage==='detalle') renderDetalle(rentaId); else render();
+        return;
+      }
       forceSave(); showToast('Baja cancelada');
       if (currentPage==='detalle') renderDetalle(rentaId); else render();
     }
@@ -21676,6 +21704,10 @@ function dashGoRentas(tipo) {
 function _verPropiedadesEnModal(filtro, _tituloOverride) {
   var visibles = getRentasVisibles();
   var props = visibles.slice();
+  // FIX SINRENTAR-BAJAPROG-CUENTA (2026-11): propiedades que se LISTAN como dato informativo
+  // pero NO entran en el conteo ni en el total. Sólo el filtro 'sin-rentar' las usa; para todos
+  // los demás queda vacío y nada cambia.
+  var _informativas = [];
   var titulo = '🏠 Propiedades';
   var icono = '🏠';
 
@@ -21716,11 +21748,16 @@ function _verPropiedadesEnModal(filtro, _tituloOverride) {
     // FIX PORTAFOLIO-POR-INICIAR: este filtro devolvía TAMBIÉN las de contrato por empezar, así
     // que la lista traía más propiedades de las que decía la cifra de "Sin rentar" de la
     // tarjeta, que sólo cuenta las que no tienen inquilino. Ahora cada una tiene su lista.
-    props = props.filter(function(r) {
-      if (!r.clienteId || r.clienteId === '') return true;
-      if (r.bajaProgramada) return true;
-      return false;
+    // FIX SINRENTAR-BAJAPROG-CUENTA (2026-11): las de baja programada seguían MEZCLADAS con las
+    // de verdad vacías, así que la lista decía 2 propiedades / $37,500 mientras la tarjeta y la
+    // barra decían 1 / $21,000 — y una de ellas aparecía con inquilino y debiendo $16,500, que
+    // es cualquier cosa menos "sin rentar". Un desacuerdo entre dos pantallas es un bug, no una
+    // cifra que publicar. Decisión de Franco: que SÍ se vean al abrir la lista, como dato
+    // informativo, pero que NO cuenten ni en el número ni en el dinero. Van aparte, abajo.
+    _informativas = props.filter(function(r) {
+      return r.clienteId && r.clienteId !== '' && r.bajaProgramada;
     });
+    props = props.filter(function(r) { return !r.clienteId || r.clienteId === ''; });
     titulo = '🔓 Propiedades sin rentar';
   } else if (filtro === 'atrasado') {
     props = props.filter(function(r) { var st = getStatusRenta(r); return st && st.estado === 'atrasado'; });
@@ -21813,19 +21850,30 @@ function _verPropiedadesEnModal(filtro, _tituloOverride) {
     var _txt = Math.abs(m - Math.round(m)) < 0.05 ? String(Math.round(m)) : m.toFixed(1);
     return _txt + (_txt === '1' ? ' mes pagado' : ' meses pagados');
   };
-  if (!props.length) {
+  if (!props.length && !_informativas.length) {
     html = '<div style="text-align:center;padding:24px;color:var(--text3)">No hay propiedades en esta categoría.</div>';
   } else {
     // Ordenar por monto desc (efectivo, incluyendo histórico)
     if (_esFavor) props.sort(function(a, b) { return _favorDe(b) - _favorDe(a); });
     else props.sort(function(a, b) { return _montoEfectivo(b) - _montoEfectivo(a); });
+    _informativas.sort(function(a, b) { return _montoEfectivo(b) - _montoEfectivo(a); });
+    // FIX SINRENTAR-BAJAPROG-CUENTA: el total sale SOLO de props. Las informativas se listan
+    // abajo pero no suman, para que este número y el de la tarjeta no puedan separarse.
     var totalMonto = props.reduce(function(s, r) { return s + (_esFavor ? _favorDe(r) : _montoEfectivo(r)); }, 0);
     html += '<div style="background:var(--accent-light);border:1px solid rgba(15,94,58,0.2);border-radius:10px;padding:14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">';
     html += '<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);font-weight:600">' + (_esFavor ? 'Total a favor' : 'Total propiedades') + '</div>';
     html += '<div style="font-size:10px;color:var(--text3);margin-top:1px">' + props.length + ' propiedad' + (props.length !== 1 ? 'es' : '') + '</div></div>';
     html += '<div style="font-family:\'Inter\',sans-serif;font-variant-numeric:tabular-nums;font-size:20px;font-weight:800;color:var(--accent)">' + fmt(totalMonto) + (_esFavor ? '' : '/mes') + '</div></div>';
     html += '<div style="max-height:55vh;overflow-y:auto">';
-    props.forEach(function(r) {
+    props.concat(_informativas).forEach(function(r, _ixF) {
+      // FIX SINRENTAR-BAJAPROG-CUENTA: a partir de props.length empiezan las informativas.
+      var _esInfo = (_ixF >= props.length);
+      if (_esInfo && _ixF === props.length) {
+        html += '<div style="margin:14px 0 2px;padding:8px 10px;background:var(--surface2);border-radius:8px;border-left:3px solid #d1a054">'
+             +  '<div style="font-size:11px;font-weight:700;color:#92400e">📅 Con baja programada</div>'
+             +  '<div style="font-size:10px;color:var(--text3);margin-top:1px">Siguen rentadas hoy — informativo, no cuentan arriba</div>'
+             +  '</div>';
+      }
       var st = getStatusRenta(r);
       var _mEf = _montoEfectivo(r);
       var _statusBadge = '';
@@ -21838,7 +21886,14 @@ function _verPropiedadesEnModal(filtro, _tituloOverride) {
         _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#dbeafe;color:#1e40af;font-size:10px;font-weight:700;margin-left:6px">📅 INICIA ' + escHtml(_fini.toUpperCase()) + '</span>';
       } else if (st.saldoFavor > 0) _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#d1fae5;color:#065f46;font-size:10px;font-weight:700;margin-left:6px">✨ A FAVOR</span>';
       else _statusBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#d1fae5;color:#065f46;font-size:10px;font-weight:700;margin-left:6px">✅ AL DÍA</span>';
-      html += '<div data-action="verDetalleYCerrarModal" data-arg="' + r.id + '" style="display:flex;align-items:center;gap:12px;padding:10px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'\'">';
+      // FIX SINRENTAR-BAJAPROG-CUENTA: en las informativas se dice CUÁNDO se desocupa, que es
+      // la única razón por la que están en esta lista.
+      if (_esInfo && r.bajaProgramada) {
+        var _fSale = '';
+        try { _fSale = fmtDate(r.bajaProgramada); } catch(_eS) { _fSale = r.bajaProgramada; }
+        _statusBadge += '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;margin-left:6px">📅 SALE EL ' + escHtml(String(_fSale).toUpperCase()) + '</span>';
+      }
+      html += '<div data-action="verDetalleYCerrarModal" data-arg="' + r.id + '" style="display:flex;align-items:center;gap:12px;padding:10px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s' + (_esInfo ? ';opacity:.72' : '') + '" onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'\'">';
       html += '<div style="flex:1;min-width:0">';
       html += '<div style="font-weight:600;font-size:13px;color:var(--text)">' + escHtml(r.nombre) + _statusBadge + '</div>';
       html += '<div style="font-size:11px;color:var(--text3);margin-top:2px">👤 ' + escHtml(getClienteNombre(r.clienteId)) + ((r.tipo) ? ' · ' + escHtml(r.tipo) : '') + '</div>';
