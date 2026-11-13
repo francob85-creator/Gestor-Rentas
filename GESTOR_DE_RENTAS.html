@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v160 · 13-nov-2026';
+var APP_VERSION = 'v161 · 13-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -17054,7 +17054,7 @@ function renderDetalle(id) {
           <button id="detalle-menu-btn-${renta.id}" data-action="toggleDetalleMenu" data-arg="${renta.id}" class="btn btn-primary" style="font-size:13px;padding:8px 16px">✏️ Editar ▾</button>
           <div id="detalle-menu-${renta.id}" style="display:none;position:absolute;top:44px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;width:230px;z-index:300;box-shadow:0 8px 30px rgba(0,0,0,0.13);overflow:hidden">
             <button class="detalle-menu-item" data-action="closeDetalleMenuYEditar" data-arg="${renta.id}">✏️ Editar propiedad</button>
-            ${renta.clienteId ? '<div style=\"height:1px;background:var(--border);margin:3px 0\"></div><button class=\"detalle-menu-item\" style=\"color:var(--warning)\" data-action=\"closeDetalleMenuYDarBaja\" data-arg=\"' + renta.id + '\">📉 Dar de baja inquilino</button>' : ''}
+            ${renta.clienteId ? '<div style=\"height:1px;background:var(--border);margin:3px 0\"></div><button class=\"detalle-menu-item\" style=\"color:var(--warning)\" data-action=\"closeDetalleMenuYDarBaja\" data-arg=\"' + renta.id + '\">' + (renta.bajaProgramada ? '📅 Quitar baja programada' : '📉 Dar de baja inquilino') + '</button>' : ''}
             <div style="height:1px;background:var(--border);margin:3px 0"></div>
             <button class="detalle-menu-item" data-action="closeDetalleMenuYSubdividir" data-arg="${renta.id}">➗ Subdividir propiedad</button>
             <button class="detalle-menu-item" data-action="closeDetalleMenuYFusionar" data-arg="${renta.id}">🔀 Fusionar con otra</button>
@@ -17460,7 +17460,14 @@ async function darDeBajaInquilino(rentaId) {
   var renta = (_getRentaMap()[rentaId] || null);
   if (!renta || !renta.clienteId) return;
   if (renta.bajaProgramada) {
-    if (await showConfirm('Baja programada para ' + fmtDate(renta.bajaProgramada) + '. ¿Cancelar la baja?', {confirmText: 'Cancelar baja', cancelText: 'No'})) {
+    // FIX BAJA-BOTON-AMBIGUO (2026-11): el botón del menú decía "Dar de baja inquilino" aunque
+    // con una baja ya programada hace lo CONTRARIO (la quita), y el aviso preguntaba "¿Cancelar
+    // la baja?" con los botones "Cancelar baja" / "No" — donde "Cancelar" se lee como "salirme
+    // de aquí". Franco preguntó cómo se quitaba una baja programada porque no era adivinable.
+    // Ahora el menú dice "📅 Quitar baja programada" y aquí los botones son "Quitar baja" /
+    // "Dejarla", que no se pueden confundir. Mismo comportamiento, sólo el texto cambia.
+    if (await showConfirm('Esta propiedad tiene una baja programada para ' + fmtDate(renta.bajaProgramada) +
+        '.\n\n¿Quitarla? El inquilino se queda como está.', {confirmText: 'Quitar baja', cancelText: 'Dejarla'})) {
       // FIX CANCELAR-BAJA-NO-PERSISTE (2026-11): esto sólo hacía forceSave(), que guarda el doc
       // principal pero NO el documento de la propiedad — y ése es el que manda para las rentas.
       // La baja se borraba de la memoria, el aviso decía "Baja cancelada", y al llegar el
