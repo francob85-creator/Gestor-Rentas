@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v162 · 13-nov-2026';
+var APP_VERSION = 'v163 · 13-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4796,6 +4796,28 @@ function _lsSavePendingRentaDeletes() {
 var _pendingClienteDeletes = {}; // { clienteId: intentos }
 var _pendingAbonoDeletes = {};   // { abonoId: intentos }
 var _pendingAbonosPurge = {};    // { rentaId: intentos } — re-ejecuta _fbDeleteAllAbonosForRenta
+// FIX GUARDADO-MUDO (2026-11): rentas y abonos tienen cola durable y por eso dejan rastro de
+// si la escritura aterrizó; los clientes NO tenían ninguna señal. Esto la crea, para que
+// _guardoBien() pueda contestar también por ellos. OJO: es sólo una marca, todavía NO hay
+// reintento automático de clientes — eso queda anotado como pendiente aparte.
+var _fallosEscrituraCliente = {};  // { clienteId: timestamp del último fallo }
+
+// FIX GUARDADO-MUDO (2026-11): _fbWriteRenta, _fbWriteAbono, _fbWriteCliente y _fbDeleteAbono
+// NUNCA relanzan: atrapan el error por dentro, lo encolan y regresan normal. Por eso los 17
+// try/catch que los envuelven en este archivo son CÓDIGO MUERTO, y las banderas _syncOk /
+// _syncFailed que dependen de ellos no se encienden jamás. La app decía "Abono eliminado
+// definitivamente" o contaba una importación exitosa aunque no hubiera llegado nada al
+// servidor — y la misma trampa hizo que la primera versión del FIX BAJA-ORDEN-DESTRUCTIVO
+// fuera inútil. La señal fiable es la cola: el escritor BORRA su entrada al tener éxito y la
+// pone al fallar. Ésta es la única forma correcta de preguntar "¿de verdad se guardó?".
+function _guardoBien(tipo, id) {
+  if (!id) return false;
+  if (tipo === 'renta')    return _pendingRentaWrites[id] == null;
+  if (tipo === 'abono')    return _pendingAbonoWrites[id] == null;
+  if (tipo === 'abonoDel') return _pendingAbonoDeletes[id] == null;
+  if (tipo === 'cliente')  return _fallosEscrituraCliente[id] == null;
+  return true;
+}
 function _lsLoadPendingDeletesV2() {
   try { var s1 = localStorage.getItem('gr_pending_cliente_deletes'); if (s1) _pendingClienteDeletes = JSON.parse(s1) || {}; } catch(e1) { _pendingClienteDeletes = {}; }
   try { var s2 = localStorage.getItem('gr_pending_abono_deletes'); if (s2) _pendingAbonoDeletes = JSON.parse(s2) || {}; } catch(e2) { _pendingAbonoDeletes = {}; }
@@ -5132,8 +5154,10 @@ async function _fbWriteCliente(cliente) {
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     data._sessionId = _fbSessionId;
     await col.doc(cliente.id).set(data);
+    delete _fallosEscrituraCliente[cliente.id];   // FIX GUARDADO-MUDO: aterrizó
   } catch(e) {
     console.error('[Fase2] _fbWriteCliente error:', e.message);
+    _fallosEscrituraCliente[cliente.id] = Date.now();  // FIX GUARDADO-MUDO: NO aterrizó
     showToast('⚠️ Error al guardar cliente. Verifica tu conexión.');
   }
 }
@@ -17974,8 +17998,11 @@ async function _guardarRentaConLimite() {
     var _targetId = editandoRentaId || (state.rentas[state.rentas.length - 1] || {}).id;
     var _targetRenta = _targetId ? (_getRentaMap()[_targetId] || null) : null;
     if (_targetRenta) {
+      // FIX GUARDADO-MUDO (2026-11): el catch por si solo es codigo muerto, _fbWriteRenta
+      // no relanza. La senal fiable es la cola de pendientes.
       try { await _fbWriteRenta(_targetRenta); }
       catch(eWR) { console.error('[guardarRenta] _fbWriteRenta fail:', eWR); _syncOk = false; }
+      if (!_guardoBien('renta', _targetRenta.id)) _syncOk = false;
     }
   }
   _clearStatusCache(editandoRentaId || undefined);
@@ -20649,8 +20676,10 @@ async function guardarAbono() {
   for (var _wi = 0; _wi < _newAbonoIds.length; _wi++) {
     var _wab = renta.abonos.find(function(a){ return a.id === _newAbonoIds[_wi]; });
     if (_wab) {
+      // FIX GUARDADO-MUDO (2026-11): _fbWriteAbono no relanza; la senal es la cola.
       try { await _fbWriteAbono(renta.id, _wab); }
       catch(eWA) { console.error('[guardarAbono] _fbWriteAbono fail:', eWA); _syncFailedA2 = true; }
+      if (!_guardoBien('abono', _wab.id)) _syncFailedA2 = true;
     }
   }
   closeModal('modalAbono');
@@ -20717,12 +20746,17 @@ async function eliminarAbono(rentaId, abonoId) {
   try {
     if (state._rentasMigratedV2) await _fbWriteRenta(_getRentaMap()[rentaId]);
   } catch(eWR) { console.error('[eliminarAbono] _fbWriteRenta fail:', eWR); _syncFailed = true; }
+  // FIX GUARDADO-MUDO (2026-11): ni _fbWriteRenta ni _fbDeleteAbono relanzan, asi que los dos
+  // catch de aqui nunca se activaban y el aviso de error de sync era codigo inalcanzable:
+  // siempre decia "Abono eliminado definitivamente" aunque no llegara nada al servidor.
+  if (state._rentasMigratedV2 && !_guardoBien('renta', rentaId)) _syncFailed = true;
   _lsSave(); // abono op: Firestore already via forceSave
   _fbJustSaved = Date.now();
   // FASE 1: delete from subcollection (batch also bumps mainDoc.updatedAt)
   try {
     await _fbDeleteAbono(abonoId);
   } catch(eDA) { console.error('[eliminarAbono] _fbDeleteAbono fail:', eDA); _syncFailed = true; }
+  if (!_guardoBien('abonoDel', abonoId)) _syncFailed = true;
   // FIX RESURRECT 3: forceSave en lugar de save() para persistir _deletedAbonoIds
   // al doc principal de inmediato. Si usamos save() con debounce, otro dispositivo
   // podría ver el abono aún en Firestore antes de que llegue el _deletedAbonoIds
@@ -20782,9 +20816,12 @@ async function revertirPagoFactura(rentaId, abonoId) {
 
     _clearStatusCache(rentaId);
     var _syncFailed = false;
+    // FIX GUARDADO-MUDO (2026-11): faltaba el await —sin el, el catch no podia atrapar nada
+    // aunque _fbWriteAbono lanzara— y ademas _fbWriteAbono no relanza. Doble punto ciego.
     try {
-      _fbWriteAbono(renta.id, abono); // FASE 1: persistir el abono actualizado en la subcolección
+      await _fbWriteAbono(renta.id, abono); // FASE 1: persistir el abono actualizado en la subcolección
     } catch(eW) { console.error('[revertirPagoFactura] _fbWriteAbono fail:', eW); _syncFailed = true; }
+    if (!_guardoBien('abono', abono.id)) _syncFailed = true;
     save();
     _renderTrasMutacionRenta(rentaId);
     if (_syncFailed) showToast('⚠️ Pago revertido localmente. Error de sync — verifica conexión.', 4000);
@@ -25605,7 +25642,7 @@ async function importarDatos(input) {
               } catch(eCB) {
                 console.error('[Importar] Batch de clientes falló: ' + eCB.message + ' — uno por uno');
                 for (var _cfi = 0; _cfi < _cSlice.length; _cfi++) {
-                  try { await _fbWriteCliente(_cSlice[_cfi]); _cliCount++; } catch(eC1) { console.error('[Importar] cliente ' + _cSlice[_cfi].id + ' falló: ' + eC1.message); }
+                  try { await _fbWriteCliente(_cSlice[_cfi]); if (_guardoBien('cliente', _cSlice[_cfi].id)) _cliCount++; } catch(eC1) { console.error('[Importar] cliente ' + _cSlice[_cfi].id + ' falló: ' + eC1.message); }
                 }
               }
             }
@@ -25644,7 +25681,7 @@ async function importarDatos(input) {
               } catch(eRB) {
                 console.error('[Importar] Batch de rentas falló: ' + eRB.message + ' — uno por uno');
                 for (var _rfi = 0; _rfi < _rSlice.length; _rfi++) {
-                  try { await _fbWriteRenta(_rSlice[_rfi]); _rnCount++; } catch(eR1) { console.error('[Importar] renta ' + _rSlice[_rfi].id + ' falló: ' + eR1.message); }
+                  try { await _fbWriteRenta(_rSlice[_rfi]); if (_guardoBien('renta', _rSlice[_rfi].id)) _rnCount++; } catch(eR1) { console.error('[Importar] renta ' + _rSlice[_rfi].id + ' falló: ' + eR1.message); }
                 }
               }
             }
