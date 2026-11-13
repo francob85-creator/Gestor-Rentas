@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v161 · 13-nov-2026';
+var APP_VERSION = 'v162 · 13-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -5681,7 +5681,15 @@ async function _migrateRentasClientesToSubcollections() {
       var batchCount = 0;
       data.rentas.forEach(function(r) {
         if (!r.id) return;
-        var stripped = _stripRentaForSync(r);
+        // FIX BATCH-UNDEFINED (2026-11): un lote de Firestore es TODO-O-NADA. Si UN solo campo de
+        // UN solo documento vale undefined, se cae el lote COMPLETO. Ninguno de los diez sitios
+        // que escriben en lote saneaba, mientras que los tres que escriben de a un documento sí.
+        // Disparador real: registrarSalidaInquilino deja depositoDevuelto, depositoMonto y
+        // depositoDevueltoMonto en undefined cuando la propiedad no tiene depósito — medido, 37
+        // de 38 rentadas. Bastaba dar una baja y usar "Forzar sincronización" para que no subiera
+        // NI UNA propiedad. Se sanea antes de colgar updatedAt para que el centinela
+        // serverTimestamp no pase por el sanitizador.
+        var stripped = _sanitizeForFirestore(_stripRentaForSync(r));
         stripped.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         stripped._sessionId = _fbSessionId;
         currentBatch.set(rentasCol.doc(r.id), stripped);
@@ -5707,7 +5715,7 @@ async function _migrateRentasClientesToSubcollections() {
       var batchCount2 = 0;
       data.clientes.forEach(function(c) {
         if (!c.id) return;
-        var stripped = _stripClienteForSync(c);
+        var stripped = _sanitizeForFirestore(_stripClienteForSync(c));
         stripped.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         stripped._sessionId = _fbSessionId;
         currentBatch2.set(clientesCol.doc(c.id), stripped);
@@ -5988,7 +5996,7 @@ async function _migrateAbonosToSubcollection() {
       for (var j = 0; j < abonos.length; j++) {
         var abono = abonos[j];
         if (!abono.id) continue;
-        var abonoData = Object.assign({}, _stripAbonoForSync(abono), { rentaId: r.id });
+        var abonoData = _sanitizeForFirestore(Object.assign({}, _stripAbonoForSync(abono), { rentaId: r.id }));
         batch.set(col.doc(abono.id), abonoData);
         count++;
         // Firestore batch limit is 500 ops
@@ -8337,7 +8345,15 @@ async function forceSyncToCloud() {
           var _frBatch = firebase.firestore().batch();
           state.rentas.forEach(function(r) {
             if (!r.id) return;
-            var s = _stripRentaForSync(r);
+            // FIX BATCH-UNDEFINED (2026-11): un lote de Firestore es TODO-O-NADA. Si UN solo campo de
+            // UN solo documento vale undefined, se cae el lote COMPLETO. Ninguno de los diez sitios
+            // que escriben en lote saneaba, mientras que los tres que escriben de a un documento sí.
+            // Disparador real: registrarSalidaInquilino deja depositoDevuelto, depositoMonto y
+            // depositoDevueltoMonto en undefined cuando la propiedad no tiene depósito — medido, 37
+            // de 38 rentadas. Bastaba dar una baja y usar "Forzar sincronización" para que no subiera
+            // NI UNA propiedad. Se sanea antes de colgar updatedAt para que el centinela
+            // serverTimestamp no pase por el sanitizador.
+            var s = _sanitizeForFirestore(_stripRentaForSync(r));
             s.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             s._sessionId = _fbSessionId;
             _frBatch.set(_frCol.doc(r.id), s);
@@ -8351,7 +8367,7 @@ async function forceSyncToCloud() {
           var _fcBatch = firebase.firestore().batch();
           state.clientes.forEach(function(c) {
             if (!c.id) return;
-            var s = _stripClienteForSync(c);
+            var s = _sanitizeForFirestore(_stripClienteForSync(c));
             s.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             s._sessionId = _fbSessionId;
             _fcBatch.set(_fcCol.doc(c.id), s);
@@ -8370,7 +8386,7 @@ async function forceSyncToCloud() {
         state.rentas.forEach(function(r) {
           (r.abonos || []).forEach(function(a) {
             if (!a.id) return;
-            _forceBatch.set(_forceCol.doc(a.id), Object.assign({}, _stripAbonoForSync(a), { rentaId: r.id }));
+            _forceBatch.set(_forceCol.doc(a.id), _sanitizeForFirestore(Object.assign({}, _stripAbonoForSync(a), { rentaId: r.id })));
             _batchCount++;
             if (_batchCount >= 499) { /* batch limit handled below */ }
           });
@@ -25578,7 +25594,7 @@ async function importarDatos(input) {
                 for (var _csi = 0; _csi < _cSlice.length; _csi++) {
                   var _cc = _cSlice[_csi];
                   _cc._localWriteAt = Date.now();
-                  var _cData = _stripClienteForSync(_cc);
+                  var _cData = _sanitizeForFirestore(_stripClienteForSync(_cc));
                   _cData.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
                   _cData._sessionId = _fbSessionId;
                   _cBatch.set(_clColImp.doc(_cc.id), _cData);
@@ -25609,7 +25625,15 @@ async function importarDatos(input) {
                 for (var _rsi = 0; _rsi < _rSlice.length; _rsi++) {
                   var _rr = _rSlice[_rsi];
                   _rr._localWriteAt = Date.now();
-                  var _rData = _stripRentaForSync(_rr);
+                  // FIX BATCH-UNDEFINED (2026-11): un lote de Firestore es TODO-O-NADA. Si UN solo campo de
+                  // UN solo documento vale undefined, se cae el lote COMPLETO. Ninguno de los diez sitios
+                  // que escriben en lote saneaba, mientras que los tres que escriben de a un documento sí.
+                  // Disparador real: registrarSalidaInquilino deja depositoDevuelto, depositoMonto y
+                  // depositoDevueltoMonto en undefined cuando la propiedad no tiene depósito — medido, 37
+                  // de 38 rentadas. Bastaba dar una baja y usar "Forzar sincronización" para que no subiera
+                  // NI UNA propiedad. Se sanea antes de colgar updatedAt para que el centinela
+                  // serverTimestamp no pase por el sanitizador.
+                  var _rData = _sanitizeForFirestore(_stripRentaForSync(_rr));
                   _rData.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
                   _rData._sessionId = _fbSessionId;
                   _rBatch.set(_rnColImp.doc(_rr.id), _rData);
@@ -25654,7 +25678,7 @@ async function importarDatos(input) {
                 var _batch = firebase.firestore().batch();
                 for (var _si = 0; _si < _slice.length; _si++) {
                   var _it = _slice[_si];
-                  var _d = Object.assign({}, _stripAbonoForSync(_it.ab), { rentaId: _it.rentaId });
+                  var _d = _sanitizeForFirestore(Object.assign({}, _stripAbonoForSync(_it.ab), { rentaId: _it.rentaId }));
                   _batch.set(_abColImp.doc(_it.ab.id), _d);
                 }
                 _fbJustSaved = Date.now();
@@ -25665,7 +25689,7 @@ async function importarDatos(input) {
                 for (var _fi = 0; _fi < _slice.length; _fi++) {
                   var _itf = _slice[_fi];
                   try {
-                    var _df = Object.assign({}, _stripAbonoForSync(_itf.ab), { rentaId: _itf.rentaId });
+                    var _df = _sanitizeForFirestore(Object.assign({}, _stripAbonoForSync(_itf.ab), { rentaId: _itf.rentaId }));
                     await _abColImp.doc(_itf.ab.id).set(_df);
                     _abonosCount++;
                   } catch(eOne) { console.error('[Importar] abono ' + _itf.ab.id + ' falló: ' + eOne.message); }
