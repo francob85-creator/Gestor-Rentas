@@ -197,18 +197,34 @@ cambio o algo preexistente. Después corrige la causa, no el síntoma.
 // FIX NOMBRE-DEL-CASO (2026-08): qué pasaba, por qué pasaba y por qué esta es la cura.
 ```
 
+**Qué es esta lista.** Es una **selección**, no un inventario: el archivo tiene ~236 etiquetas
+`FIX` y aquí hay ~60, las de los casos que conviene recordar. **Que una etiqueta no esté aquí
+no significa que no exista** — antes de concluir que algo nunca se arregló, `grep` del archivo.
+Para ver todas: `grep -oE "FIX [A-Z][A-Z0-9-]+" GESTOR_DE_RENTAS.html | sort -u`.
+
 Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-MAINDOC`,
 `FIX TRANSPORTE-IOS`, `FIX META-ONLY`, `MULTI-FACTURA`, `FIX TIPOS-SELECTOR`,
 `FIX LP-STANDALONE-FALSO`, `FIX BIO-SIN-SYNC`, `FIX FOREGROUND-RECONEXION`,
 `FIX PARPADEO-TARJETAS`, `FIX BAJA-PROG-SIN-GUARDIA`, `FIX SETDATE-CALENDARIO`,
-`FIX CHROME-PASSWORD-PROMPT`, `FIX SCROLL-BACKDROP`, `FIX NAV-OFFSET-REAL`,
+`FIX SCROLL-BACKDROP`, `FIX NAV-OFFSET-REAL`,
 `FIX HEADER-OFFSET-OBSERVER`, `FIX VH-IOS`, `FIX HISTORIAL-INQUILINO-ANTERIOR`,
 `FIX VENCIDO-SOBRE-ESCRIBE-STATUS`, `FIX SONDA-DIA-COBRO`, `FIX RESIDUO-PENDIENTE`,
 `FIX COBRANZA-D`, `FIX ESPERADO-INFLADO`, `FIX HISTORIAL-NO-ENCOGE`,
 `FIX EX-INQUILINO-RESUCITA`, `FIX FECHA-SALIDA-IGNORADA`, `FIX BAJA-BOTON-MIENTE`,
 `FIX PENDIENTES-FILTRO`, `FIX INCREMENTO-NO-LLEGA-A-MONTO`, `FIX FAVOR-MUESTRA-RENTA`,
 `FIX AL-DIA-INCLUYE-FAVOR`, `FIX MONTO-BAJA-EN-CERO`, `FIX REP-INVISIBLE`,
-`FIX ENYE-EN-TRANSITO`, `FIX CSD-EN-CONSOLA`, `FIX TIMBRES-INFO-FISCALAPI`.
+`FIX ENYE-EN-TRANSITO`, `FIX CSD-EN-CONSOLA`, `FIX TIMBRES-INFO-FISCALAPI`,
+`FIX LIQUIDAR-PARCIAL`, `FIX BAJA-ORDEN-DESTRUCTIVO`, `FIX RENTA-UNDEFINED`,
+`FIX CANCELAR-BAJA-NO-PERSISTE`, `FIX SINRENTAR-BAJAPROG-CUENTA`, `FIX BAJA-BOTON-AMBIGUO`,
+`FIX BATCH-UNDEFINED`, `FIX GUARDADO-MUDO`, `FIX REINTENTO-SIN-TOPE`,
+`FIX SUBEMAILVAL`, `FIX AFTERLOGIN-FOSIL`, `FIX ABONO-UNDEFINED`, `FIX CLIENTE-UNDEFINED`,
+`FIX TS-APLANADO`, `FIX WRITE-DURABLE`, `FIX ABONO-DURABLE`, `FIX SNAPSHOT-STALE`,
+`FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`.
+
+> ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
+> aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
+> escribió el comentario. Si el prompt de contraseña de Chrome vuelve a aparecer, es un caso
+> abierto, no uno ya resuelto.
 
 ---
 
@@ -682,11 +698,16 @@ volver a agregar la PWA.
 
 # PENDIENTES CONOCIDOS
 
-- **`subEmailVal is not defined`** en `guardarUsuario` (validación de correo duplicado): usa una
-  variable inexistente; la buena es `subEmail`. Hoy no truena por casualidad, pero en cuanto un
-  segundo usuario tenga correo, guardar usuarios se rompe entero.
-- **`_afterFirebaseLogin`** puede ejecutar `saveUsers([user])` y borrar la lista completa de
-  usuarios del servidor si `fbLoadUsers()` falla transitoriamente. Necesita guardia.
+> Revisado y actualizado el 14-nov-2026 con una auditoría del archivo. Lo que estaba aquí y ya
+> no es cierto se quitó; lo que sigue vigente se volvió a comprobar contra el código, no contra
+> la memoria. **Si vas a confiar en un punto de esta lista, verifícalo primero**: una lista
+> desactualizada hace perder más tiempo que no tenerla.
+
+- ~~**`subEmailVal is not defined`** en `guardarUsuario`~~ → **YA ARREGLADO** (`FIX SUBEMAILVAL`,
+  ago-2026). Verificado el 14-nov: la variable mala ya no existe en el archivo.
+- ~~**`_afterFirebaseLogin` podía borrar la lista de usuarios**~~ → **YA ARREGLADO**
+  (`FIX AFTERLOGIN-FOSIL`, ago-2026). Hoy sólo siembra al titular cuando confirmó que la lista
+  del servidor está vacía.
 - ~~**19 facturas huérfanas** sin diagnosticar~~ → **RESUELTO el 26-27 oct 2026.** La causa no
   era una sino dos: (a) ráfagas de timbrado que iOS cortó y dejaron la factura sin su abono —
   BODEGA EL RANCHITO, reparado recreando el abono con el mismo id que el CFDI ya apuntaba; y
@@ -713,6 +734,7 @@ volver a agregar la PWA.
   bloquea y saca de la pantalla sin preguntarle nada a FiscalAPI. Puede impedir facturar
   teniendo timbres reales, y deja pasar cuando no los hay. FiscalAPI ya rechaza por su cuenta
   con "Saldo insuficiente", así que la guardia no agrega seguridad, sólo bloqueos falsos.
+  **Son DOS guardias, no una** (verificado 14-nov): si se cambia, se cambian las dos.
 - **El flujo de complemento de pago (REP) no llama a `descontarTimbre()`**, a diferencia del
   timbrado normal, aunque un REP sí consume un timbre real.
 - **La regla "cuánto vale esta propiedad al mes" está escrita cuatro veces.** Una es
@@ -725,5 +747,35 @@ volver a agregar la PWA.
   depósitos de La Rivereña ($96,000) y TAMESIS DEPA F ($25,000) sin confirmar de qué inquilino
   son; Bodega Sarabia con ~$1,049 faltantes de noviembre y $4,400 ya facturados de menos.
 - Arreglo de documento-fósil para **clientes** completo solo a medias.
-- 8 líneas con `const`/`let` heredadas (3999, 4009, 4041, 4042, 13604, 24166, 25486, 25487).
-  No rompen nada; emparejarlas solo si Franco lo pide.
+- 8 líneas con `const`/`let` heredadas. No rompen nada; emparejarlas sólo si Franco lo pide.
+  **No se anotan los números de línea**: se corren solas con cada cambio y la lista queda
+  mintiendo. `node validate.js GESTOR_DE_RENTAS.html` las imprime al día.
+
+## Abiertos desde la auditoría del 14-nov-2026
+
+- **Los clientes no tienen reintento automático.** Rentas y abonos sí (`_pendingRentaWrites`,
+  `_pendingAbonoWrites`, con su flush durable). `_fbWriteCliente` sólo deja la marca
+  `_fallosEscrituraCliente` que agregó `FIX GUARDADO-MUDO`: ahora se SABE que falló y se avisa,
+  pero nadie lo vuelve a intentar. Falta engancharlo a `_flushPendingRentaWrites`.
+- **Quedan 12 `try/catch` alrededor de escritores que no relanzan.** `FIX GUARDADO-MUDO` arregló
+  los 5 que le mentían al usuario o contaban mal; los otros 12 sólo escriben en consola, así que
+  son inofensivos y se dejaron intactos. **Si tocas uno, no te fíes de su `catch`**: usa
+  `_guardoBien()`.
+- **Los chips de la pantalla de Propiedades mezclan las de baja programada dentro de
+  "Sin rentar"**, igual que hacía el modal de Inicio antes de `FIX SINRENTAR-BAJAPROG-CUENTA`.
+  Ahí el número y la lista concuerdan entre ellos, pero **Inicio dice 1 y Propiedades dice 2**.
+  Lo mismo en el desglose por tipo (`tipoEstado:...|sin-rentar`). Decisión de Franco pendiente.
+- **LISBOA DEPA E / YOSEFF: falta confirmar con un respaldo** que los 7 pagos restaurados
+  ($198,000) quedaron archivados en la ficha del historial después de la baja. El script de
+  restauración corrió el 13-nov pero nunca se verificó contra datos reales.
+
+### Revisado el 14-nov y SIN problema (no volver a buscar aquí sin motivo)
+
+- **Fechas:** 29 usan la convención de mediodía (`T12:00:00`) y la única que no está en un aviso
+  de vencimiento de contrato. No hay riesgo de corrimiento de día ni de mes.
+- **`getStatusRenta` sigue siendo la única fuente de verdad:** ningún otro camino reporta más
+  deuda que ella. Los `Math.max` que quedan son todos para no bajar de cero.
+- **Las 4 copias de la regla del monto hoy son idénticas** (comparadas línea por línea). No hay
+  desacuerdo *ahora*; el riesgo sigue siendo la próxima vez que se edite una sola.
+- **`eliminarAbono` ya guarda la lápida ANTES de borrar.** Ese flujo no tiene el bug de orden
+  que curó `FIX BAJA-ORDEN-DESTRUCTIVO`.
