@@ -717,12 +717,30 @@ volver a agregar la PWA.
   $72,500). El contador quedó en cero. **La causa (b) está cerrada en el código** con
   `FIX BAJA-PROG-SIN-GUARDIA`. Si vuelven a aparecer huérfanas, revisa primero si hubo una baja
   reciente.
-- **Depósitos que quedan colgados de la propiedad al cambiar de inquilino.** El flujo correcto
-  existe (`registrarSalidaInquilino` archiva el depósito, `confirmarBajaInquilino` lo limpia),
-  pero si la baja falla a medias el depósito se queda bajo el inquilino NUEVO, que nunca lo dio.
-  Pasó con los $41,000 de Lisboa #186-B y los $25,000 de TAMESIS DEPA F. Sin diagnosticar por
-  qué sobrevivió a la limpieza; la hipótesis es un snapshot stale de otro dispositivo
-  reescribiéndolo, pero **no está comprobado**.
+- ~~**Depósitos colgados al cambiar de inquilino**~~ → **DIAGNOSTICADO el 14-nov-2026. NO es
+  un bug activo del código.** La hipótesis que estaba anotada aquí —un snapshot stale que los
+  resucitaba— **era equivocada**. Lo que pasó: los dos casos ($41,000 de Lisboa #186-B y
+  $25,000 de TAMESIS DEPA F) son **residuo de la reparación manual del 26-27 oct**. Sus fichas
+  traen exactamente $142,680 y $72,500, los montos que este mismo archivo registra como
+  reconstruidos desde los respaldos del 24-sep y 07-ago. Aquella baja falló —por eso se
+  perdieron los pagos— y al fallar **nunca llegó a limpiar el depósito de la propiedad**.
+  Evidencia fina: en TAMESIS DEPA F el depósito vivo es byte por byte idéntico al archivado,
+  hasta el espacio final de la nota, o sea el mismo objeto nunca borrado; en Lisboa el
+  archivado quedó congelado en "Pagado a Cambar / devuelto:false" mientras el vivo dice
+  "Pagado a Franco / devuelto el 27-oct", es decir sobrevivió y Franco lo editó después.
+  **Los cuatro caminos de baja de hoy sí hacen `r.deposito = null`** (verificado).
+  **Decisión de Franco (14-nov): los dos se dejan como están, él los corrige a mano.** No hay
+  nada que programar aquí y no hay que volver a proponerlo.
+  Hueco latente que salió de paso, real pero NO culpable de estos dos casos: `deposito` no
+  está en `_criticalFields` ni en `_critFields2`, así que ningún snapshot lo protege.
+- **El CAMBIO DE INQUILINO es un CUARTO camino de baja** (`_confirmarCambioInquilino`), además
+  de los tres que menciona LA SEGUNDA LECCIÓN. Y **todavía tiene el orden destructivo** que
+  `FIX BAJA-ORDEN-DESTRUCTIVO` (v158) curó en `confirmarBajaInquilino`: archiva la ficha en
+  memoria, **borra los pagos de la nube**, y sólo al final `_guardarRentaConLimite()` persiste
+  la propiedad. Si esa escritura no aterriza, los pagos se fueron y la ficha se queda sólo en
+  la memoria de ese aparato. Es, con mucha probabilidad, lo que les pasó a los dos casos de
+  Algodoneros en octubre. **Pendiente de autorización de Franco** — la cura es la misma de la
+  v158: persistir primero, borrar después, y abortar deshaciendo si no se pudo guardar.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
