@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v163 · 13-nov-2026';
+var APP_VERSION = 'v164 · 14-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4802,6 +4802,41 @@ var _pendingAbonosPurge = {};    // { rentaId: intentos } — re-ejecuta _fbDele
 // reintento automático de clientes — eso queda anotado como pendiente aparte.
 var _fallosEscrituraCliente = {};  // { clienteId: timestamp del último fallo }
 
+// FIX REINTENTO-SIN-TOPE (2026-11): las siete colas de reintento CONTABAN los intentos pero
+// nadie los comparaba nunca contra un máximo — no existía una sola comparación así en todo el
+// archivo. Un fallo de red se cura solo al reconectar; un fallo PERMANENTE (un permiso, un
+// campo que Firestore rechaza) no se cura nunca, y la app reintentaba cada 15-20 segundos
+// para siempre, sacando el mismo aviso. El daño real no es el gasto: es que el usuario
+// aprende a ignorar los avisos, y entonces el sistema se queda ciego justo para lo que sí
+// importa. Por eso ahora se ríndese y se avisa UNA sola vez.
+// Nota: el bucle de reintentos no incrementa el contador cuando no hay red (sale antes), así
+// que llegar al tope significa que estando EN LÍNEA falló ese número de veces seguidas.
+var MAX_REINTENTOS_SYNC = 8;        // ≈ 8 × 15-20s ≈ 2-3 min en línea antes de rendirse
+var _avisoRendicionDado = {};       // para no repetir el aviso en cada vuelta
+
+function _seAgotaronLosIntentos(cola, id, etiqueta, critico) {
+  var _n = cola[id];
+  if (_n && typeof _n === 'object') _n = _n.intentos;   // _pendingAbonoWrites guarda un objeto
+  if ((_n || 0) < MAX_REINTENTOS_SYNC) return false;
+  delete cola[id];
+  var _clave = etiqueta + ':' + id;
+  if (!_avisoRendicionDado[_clave]) {
+    _avisoRendicionDado[_clave] = true;
+    // console.error, no console.log: la bitácora del celular sólo captura warn y error.
+    console.error('[SYNC-RENDICION] ' + etiqueta + ' (' + id + '): ' + MAX_REINTENTOS_SYNC +
+      ' intentos fallidos estando en línea. Se abandona el reintento — este error no es de red ' +
+      'y no va a tener éxito por repetirlo.');
+    if (critico) {
+      showAlert('No se pudo subir a la nube: ' + etiqueta + '.\n\nEl dato está guardado en ESTE ' +
+        'dispositivo pero no llegó al servidor, así que los demás no lo ven. Exporta un respaldo ' +
+        'antes de cerrar la app y avisa.', 'error');
+    } else {
+      showToast('⚠️ No se pudo sincronizar: ' + etiqueta + '. Revisa la bitácora.', 5000);
+    }
+  }
+  return true;
+}
+
 // FIX GUARDADO-MUDO (2026-11): _fbWriteRenta, _fbWriteAbono, _fbWriteCliente y _fbDeleteAbono
 // NUNCA relanzan: atrapan el error por dentro, lo encolan y regresan normal. Por eso los 17
 // try/catch que los envuelven en este archivo son CÓDIGO MUERTO, y las banderas _syncOk /
@@ -4978,6 +5013,7 @@ async function _flushPendingRentaWrites() {
     var _colC = tenantClientesCol();
     if (_colC) {
       for (var _ci2 = 0; _ci2 < _cliIds.length; _ci2++) {
+        if (_seAgotaronLosIntentos(_pendingClienteDeletes, _cliIds[_ci2], 'el borrado de un cliente', false)) continue;
         try { await _colC.doc(_cliIds[_ci2]).delete(); delete _pendingClienteDeletes[_cliIds[_ci2]]; }
         catch(eC) { _pendingClienteDeletes[_cliIds[_ci2]] = (_pendingClienteDeletes[_cliIds[_ci2]] || 0) + 1; console.warn('[BORRADO-DURABLE] reintento fallido cliente ' + _cliIds[_ci2]); }
       }
@@ -4989,6 +5025,7 @@ async function _flushPendingRentaWrites() {
     var _colA = tenantAbonosCol();
     if (_colA) {
       for (var _ai2 = 0; _ai2 < _abIds.length; _ai2++) {
+        if (_seAgotaronLosIntentos(_pendingAbonoDeletes, _abIds[_ai2], 'el borrado de un pago', false)) continue;
         try { await _colA.doc(_abIds[_ai2]).delete(); delete _pendingAbonoDeletes[_abIds[_ai2]]; }
         catch(eA) { _pendingAbonoDeletes[_abIds[_ai2]] = (_pendingAbonoDeletes[_abIds[_ai2]] || 0) + 1; console.warn('[BORRADO-DURABLE] reintento fallido abono ' + _abIds[_ai2]); }
       }
@@ -4998,6 +5035,7 @@ async function _flushPendingRentaWrites() {
   var _purgeIds = Object.keys(_pendingAbonosPurge);
   if (_purgeIds.length && _fbAuth) {
     for (var _pi2 = 0; _pi2 < _purgeIds.length; _pi2++) {
+      if (_seAgotaronLosIntentos(_pendingAbonosPurge, _purgeIds[_pi2], 'la limpieza de pagos de una propiedad', false)) continue;
       try { await _fbDeleteAllAbonosForRenta(_purgeIds[_pi2]); } catch(eP) {}
     }
   }
@@ -5016,6 +5054,7 @@ async function _flushPendingRentaWrites() {
       var _awList = _awRenta.abonos || [];
       for (var _wa2 = 0; _wa2 < _awList.length; _wa2++) { if (_awList[_wa2].id === _awId) { _awAb = _awList[_wa2]; break; } }
       if (!_awAb) { delete _pendingAbonoWrites[_awId]; continue; }
+      if (_seAgotaronLosIntentos(_pendingAbonoWrites, _awId, 'el pago de ' + (_awAb.mes || 'un mes') + ' de ' + (_awRenta.nombre || 'una propiedad'), true)) continue;
       console.log('[ABONO-DURABLE] Reintentando escritura de abono ' + _awId + ' (' + (_awAb.mes || '') + ')');
       try { await _fbWriteAbono(_awInfo.rentaId, _awAb); } catch(eW) {}
     }
@@ -5032,6 +5071,7 @@ async function _flushPendingRentaWrites() {
     if (_colD && _fbAuth && !(typeof navigator !== 'undefined' && navigator.onLine === false)) {
       for (var _di = 0; _di < _delIds.length; _di++) {
         var _dId = _delIds[_di];
+        if (_seAgotaronLosIntentos(_pendingRentaDeletes, _dId, 'el borrado de una propiedad', false)) continue;
         if (_pendingRentaWrites[_dId] != null) delete _pendingRentaWrites[_dId]; // borrar gana
         try {
           await _colD.doc(_dId).delete();
@@ -5061,6 +5101,7 @@ async function _flushPendingRentaWrites() {
       if (_rentasFirstSnapDone) delete _pendingRentaWrites[id];
       continue;
     }
+    if (_seAgotaronLosIntentos(_pendingRentaWrites, id, 'la propiedad ' + (renta.nombre || id), true)) continue;
     try {
       renta._localWriteAt = Date.now();
       // FIX RENTA-UNDEFINED (2026-11): el mismo saneo que _fbWriteRenta. Esta es la cola de
