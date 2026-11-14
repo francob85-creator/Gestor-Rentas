@@ -761,13 +761,18 @@ volver a agregar la PWA.
   los 5 que le mentían al usuario o contaban mal; los otros 12 sólo escriben en consola, así que
   son inofensivos y se dejaron intactos. **Si tocas uno, no te fíes de su `catch`**: usa
   `_guardoBien()`.
-- **Los chips de la pantalla de Propiedades mezclan las de baja programada dentro de
-  "Sin rentar"**, igual que hacía el modal de Inicio antes de `FIX SINRENTAR-BAJAPROG-CUENTA`.
-  Ahí el número y la lista concuerdan entre ellos, pero **Inicio dice 1 y Propiedades dice 2**.
-  Lo mismo en el desglose por tipo (`tipoEstado:...|sin-rentar`). Decisión de Franco pendiente.
-- **LISBOA DEPA E / YOSEFF: falta confirmar con un respaldo** que los 7 pagos restaurados
-  ($198,000) quedaron archivados en la ficha del historial después de la baja. El script de
-  restauración corrió el 13-nov pero nunca se verificó contra datos reales.
+- ~~**Los chips de Propiedades mezclan las de baja programada dentro de "Sin rentar"**~~ →
+  **DECIDIDO el 14-nov-2026: se queda así.** Se le preguntó a Franco con un caso real en la
+  mano (ALEJANDRAS DEPA C, baja programada al 12-dic, que hace que Inicio cuente 3 y
+  Propiedades 4) y respondió que lo dejara como está. **No es un bug pendiente y no hay que
+  volver a proponerlo**: en Propiedades el número y la lista concuerdan entre sí, que es lo
+  que importa. Lo mismo aplica al desglose por tipo (`tipoEstado:...|sin-rentar`).
+  Sólo el modal de Inicio lleva el trato informativo (`FIX SINRENTAR-BAJAPROG-CUENTA`).
+- ~~**LISBOA DEPA E / YOSEFF: falta confirmar los 7 pagos restaurados**~~ → **VERIFICADO el
+  14-nov-2026** contra el respaldo de ese día: la ficha de YOSEFF trae los **7 pagos,
+  $198,000 exactos**, `totalCobrado` y `numPagos` concuerdan, agosto y septiembre siguen
+  fuera con sus 2 lápidas, y la salida quedó con la fecha tecleada (14-ago), no la de hoy.
+  La propiedad ya tiene a Ladislao Medina desde el 15-ago y `bajaProgramada` en null.
 
 ### Revisado el 14-nov y SIN problema (no volver a buscar aquí sin motivo)
 
