@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v165 · 14-nov-2026';
+var APP_VERSION = 'v166 · 14-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4727,6 +4727,8 @@ function _stripRentaForSync(renta) {
   delete o._localWriteAt;
   // FIX BAJA-RESURRECT: _vacatedAt es metadata local de protección
   delete o._vacatedAt;
+  // FIX NUEVA-SE-BORRA (2026-11): marca local de recién creada, no viaja al servidor
+  delete o._localCreatedAt;
   // FIX RESURRECT + FIX DEFINITIVO: preservar _deletedAbonoIds COMPLETA sin truncar.
   // Truncar significaba que al borrar más de 100 abonos históricamente, los más viejos
   // quedaban "desbloqueados" y podían resucitar vía snapshot de caché o sync cross-device.
@@ -4750,6 +4752,8 @@ function _stripClienteForSync(cliente) {
   var o = Object.assign({}, cliente);
   // FIX SNAPSHOT-STALE: metadata local
   delete o._localWriteAt;
+  // FIX NUEVA-SE-BORRA (2026-11): marca local de recién creado, no viaja al servidor
+  delete o._localCreatedAt;
   if (o.foto && o.foto.startsWith('data:')) { o.hasFoto = true; o.foto = null; }
   if (o.contrato && o.contrato.startsWith('data:')) { o.hasContrato = true; o.contrato = null; }
   if (o.contratoData && o.contratoData.startsWith('data:')) { o.hasContrato = true; o.contratoData = null; }
@@ -5354,8 +5358,26 @@ function _applyRentasSnapshot(snapshot, suppressRender) {
   // GUARDIA POST-IMPORT: durante la ventana de importación NO eliminar (un snapshot incompleto
   // tras importar no debe borrar propiedades recién subidas).
   if (!_fromCache && !_enGuardiaImport()) {
+    // FIX NUEVA-SE-BORRA (2026-11): una propiedad o un cliente recien creados viven unos
+    // instantes SOLO en memoria, mientras su escritura viaja a Firestore. Si en ese hueco
+    // llegaba un snapshot del servidor (porque otro dispositivo escribio algo), el filtro de
+    // abajo los borraba de memoria por no estar todavia en el servidor, ademas cancelaba su
+    // escritura pendiente —la red de seguridad— y despues _fbWriteRenta/_fbWriteCliente se
+    // abortaban solos al no encontrarlos en el estado. La propiedad se veia un rato y al
+    // recargar no estaba, sin un solo aviso al usuario. Reportado por Franco el 14-nov-2026
+    // ("prol juarez 2618m2"). Es el MISMO bug que FIX RECENT-ABONO ya habia curado para los
+    // abonos en 2026-07; nunca se aplico a rentas ni a clientes. Misma cura, misma ventana.
     state.rentas = state.rentas.filter(function(r) {
       if (_fsIds.has(r.id)) return true;
+      if (r._localCreatedAt && (Date.now() - r._localCreatedAt) < 30000) {
+        // Se reescribe para cerrar la carrera, igual que hace FIX RECENT-ABONO.
+        console.warn('[NUEVA-SE-BORRA] Propiedad "' + (r.nombre || r.id) + '" recién creada y ' +
+          'aún no está en el servidor — se conserva y se reintenta la subida (informativo).');
+        if (tenantRentasCol() && _fbAuth) {
+          try { _fbWriteRenta(r); } catch(eNR) { console.warn('[NUEVA-SE-BORRA] reintento falló: ' + (eNR && eNR.message)); }
+        }
+        return true;
+      }
       // FIX BORRADO-DURABLE (2026-07): si el servidor ya no tiene esta renta, cualquier
       // escritura pendiente encolada para ella está obsoleta — descartarla evita que el
       // flush re-escriba (resucite) una propiedad eliminada desde otro dispositivo.
@@ -5588,7 +5610,20 @@ function _applyClientesSnapshot(snapshot, suppressRender) {
   // Remove deleted clientes (only from server snapshots)
   // GUARDIA POST-IMPORT: no eliminar durante la ventana de importación.
   if (!_fromCache && !_enGuardiaImport()) {
-    state.clientes = state.clientes.filter(function(c) { return _fsIds.has(c.id); });
+    state.clientes = state.clientes.filter(function(c) {
+      if (_fsIds.has(c.id)) return true;
+      // FIX NUEVA-SE-BORRA (2026-11): espejo de la protección de rentas. Ver el comentario
+      // largo en _applyRentasSnapshot.
+      if (c._localCreatedAt && (Date.now() - c._localCreatedAt) < 30000) {
+        console.warn('[NUEVA-SE-BORRA] Cliente "' + (c.nombre || c.id) + '" recién creado y aún ' +
+          'no está en el servidor — se conserva y se reintenta la subida (informativo).');
+        if (tenantClientesCol() && _fbAuth) {
+          try { _fbWriteCliente(c); } catch(eNC) { console.warn('[NUEVA-SE-BORRA] reintento falló: ' + (eNC && eNC.message)); }
+        }
+        return true;
+      }
+      return false;
+    });
   }
 
   var _newMemMap = {};
@@ -17990,6 +18025,10 @@ async function _guardarRentaConLimite() {
       formaPagoId: ((document.getElementById('r-forma-pago')||{}).value || (newCli && newCli.formaPagoId) || ''),
       abonos: [],
       createdAt: new Date().toISOString(),
+      // FIX NUEVA-SE-BORRA (2026-11): marca local que protege a la propiedad del filtro de
+      // _applyRentasSnapshot mientras su escritura a Firestore no haya confirmado. No viaja
+      // al servidor: _stripRentaForSync la quita. Mismo patron que FIX RECENT-ABONO.
+      _localCreatedAt: Date.now(),
     });
     // Generate historical abonos if client has past start date
     var _newRenta = state.rentas[state.rentas.length - 1];
@@ -19399,6 +19438,9 @@ async function guardarCliente() {
     }
     editandoClienteId = null;
   } else {
+    // FIX NUEVA-SE-BORRA (2026-11): misma marca que la propiedad nueva. Los dos caminos de
+    // importacion no la necesitan: ya estan cubiertos por la guardia de 90s (_enGuardiaImport).
+    clienteData._localCreatedAt = Date.now();
     state.clientes.push(clienteData);
   }
 
