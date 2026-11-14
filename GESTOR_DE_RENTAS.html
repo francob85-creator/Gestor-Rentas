@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v164 · 14-nov-2026';
+var APP_VERSION = 'v165 · 14-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -30916,9 +30916,17 @@ async function facturarMes(rentaId) {
     }
     return;
   }
+  // FIX GUARDIA-TIMBRES-FALSA (2026-11): esto bloqueaba el timbrado y sacaba al usuario de
+  // la pantalla mirando SOLO el contador local, sin preguntarle nada a FiscalAPI. Ese
+  // contador se desfasa con facilidad —las compras se anotan a mano y el REP ni siquiera
+  // descontaba (ver FIX REP-SIN-TIMBRE, mismo día)—, así que impedía facturar teniendo
+  // timbres reales. Y no agregaba seguridad: FiscalAPI ya rechaza por su cuenta con
+  // "Saldo insuficiente" cuando de verdad no hay. Decisión de Franco (14-nov): avisar y
+  // dejar pasar. El bloque es IDÉNTICO en facturarMes y facturarAbono: si se cambia uno,
+  // se cambia el otro.
   if ((state.timbresBalance || 0) <= 0) {
-    showAlert('⚠️ No tienes timbres disponibles.\n\nCompra un paquete de timbres en Facturación → 🛒 Comprar timbres', 'warning');
-    nav('facturacion'); return;
+    if (!await showConfirm('Tu contador dice que no te quedan timbres.\n\nPuede estar desfasado: quien decide si hay saldo real es FiscalAPI. ¿Intentar facturar de todos modos?',
+        {confirmText: 'Continuar', cancelText: 'Ir a comprar'})) { nav('facturacion'); return; }
   }
   var renta = (_getRentaMap()[rentaId] || null); if(!renta){showAlert('Propiedad no encontrada', 'info');return;}
   var cliente = (_getCliMap()[renta.clienteId] || null); if(!cliente){showAlert('No hay inquilino asignado', 'info');return;}
@@ -31045,9 +31053,17 @@ async function facturarAbono(rentaId, abonoId) {
     }
     return;
   }
+  // FIX GUARDIA-TIMBRES-FALSA (2026-11): esto bloqueaba el timbrado y sacaba al usuario de
+  // la pantalla mirando SOLO el contador local, sin preguntarle nada a FiscalAPI. Ese
+  // contador se desfasa con facilidad —las compras se anotan a mano y el REP ni siquiera
+  // descontaba (ver FIX REP-SIN-TIMBRE, mismo día)—, así que impedía facturar teniendo
+  // timbres reales. Y no agregaba seguridad: FiscalAPI ya rechaza por su cuenta con
+  // "Saldo insuficiente" cuando de verdad no hay. Decisión de Franco (14-nov): avisar y
+  // dejar pasar. El bloque es IDÉNTICO en facturarMes y facturarAbono: si se cambia uno,
+  // se cambia el otro.
   if ((state.timbresBalance || 0) <= 0) {
-    showAlert('⚠️ No tienes timbres disponibles.\n\nCompra un paquete de timbres en Facturación → 🛒 Comprar timbres', 'warning');
-    nav('facturacion'); return;
+    if (!await showConfirm('Tu contador dice que no te quedan timbres.\n\nPuede estar desfasado: quien decide si hay saldo real es FiscalAPI. ¿Intentar facturar de todos modos?',
+        {confirmText: 'Continuar', cancelText: 'Ir a comprar'})) { nav('facturacion'); return; }
   }
   var renta=(_getRentaMap()[rentaId] || null); if(!renta){showAlert('Propiedad no encontrada', 'info');return;}
   var cliente=(_getCliMap()[renta.clienteId] || null); if(!cliente){showAlert('No hay inquilino asignado', 'info');return;}
@@ -33487,6 +33503,15 @@ async function confirmarComplementoPago() {
       };
       renta.abonos[abonoIdx].complementos.push(_compEntry);
       var _compIdx = renta.abonos[abonoIdx].complementos.length - 1;
+
+      // FIX REP-SIN-TIMBRE (2026-11): un complemento de pago consume un timbre real en
+      // FiscalAPI igual que una factura, pero esta función nunca lo descontaba — sólo lo
+      // hacía su gemela confirmarFactura (línea ~31900). El contador quedaba inflado y la
+      // diferencia crecía con cada REP, así que decía más timbres de los que de verdad
+      // quedaban. Mismo patrón que la gemela, verbatim: descontar y refrescar la UI.
+      descontarTimbre('REP ' + String(uuid).slice(0,8) + ' — ' + (renta.nombre || '') +
+        ' parcialidad ' + parcialidad);
+      actualizarTimbresUI();
 
       // Also mark the original abono as fully paid if saldo=0
       if (saldoInsoluto <= 0 && renta.abonos[abonoIdx].pendientePago) {
