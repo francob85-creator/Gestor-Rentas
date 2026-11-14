@@ -219,7 +219,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX BATCH-UNDEFINED`, `FIX GUARDADO-MUDO`, `FIX REINTENTO-SIN-TOPE`,
 `FIX SUBEMAILVAL`, `FIX AFTERLOGIN-FOSIL`, `FIX ABONO-UNDEFINED`, `FIX CLIENTE-UNDEFINED`,
 `FIX TS-APLANADO`, `FIX WRITE-DURABLE`, `FIX ABONO-DURABLE`, `FIX SNAPSHOT-STALE`,
-`FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`.
+`FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
+`FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -730,13 +731,15 @@ volver a agregar la PWA.
   (`d37421cb-b803-419b-a1ea-7caa0c21c675`). Mientras tanto, los conceptos afectados se escriben
   sin acentos a mano. **No meter código que los quite automáticamente** sin que Franco lo pida:
   sería tapar el bug de otro cambiando en silencio el texto de sus facturas.
-- **La guardia de timbrado usa el contador local** (`if ((state.timbresBalance || 0) <= 0)`):
-  bloquea y saca de la pantalla sin preguntarle nada a FiscalAPI. Puede impedir facturar
-  teniendo timbres reales, y deja pasar cuando no los hay. FiscalAPI ya rechaza por su cuenta
-  con "Saldo insuficiente", así que la guardia no agrega seguridad, sólo bloqueos falsos.
-  **Son DOS guardias, no una** (verificado 14-nov): si se cambia, se cambian las dos.
-- **El flujo de complemento de pago (REP) no llama a `descontarTimbre()`**, a diferencia del
-  timbrado normal, aunque un REP sí consume un timbre real.
+- ~~**La guardia de timbrado usa el contador local**~~ → **ARREGLADO v165 (14-nov-2026)**,
+  `FIX GUARDIA-TIMBRES-FALSA`. Eran DOS guardias idénticas, en `facturarMes` y `facturarAbono`.
+  Decisión de Franco: avisar y dejar pasar, en vez de bloquear. Ahora sale un confirm con
+  "Continuar" / "Ir a comprar". **Si se vuelve a tocar, se tocan las dos**: el bloque es el
+  mismo en ambas y separarlas sería el bug de siempre.
+- ~~**El REP no llama a `descontarTimbre()`**~~ → **ARREGLADO v165 (14-nov-2026)**,
+  `FIX REP-SIN-TIMBRE`, en `confirmarComplementoPago()`. Mismo patrón que su gemela
+  `confirmarFactura()`. **Pendiente de confirmar en vivo**: el próximo REP que timbre Franco
+  debe bajar el contador en 1 y dejar su renglón en el historial de timbres.
 - **La regla "cuánto vale esta propiedad al mes" está escrita cuatro veces.** Una es
   `_montoMostrarRenta()` (la buena); las otras tres siguen en línea dentro de `renderDashboard`
   (×2) y `_verPropiedadesEnModal`. Unificarlas toca la aritmética del dashboard: necesita PLAN
