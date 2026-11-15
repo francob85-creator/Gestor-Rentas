@@ -221,7 +221,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX TS-APLANADO`, `FIX WRITE-DURABLE`, `FIX ABONO-DURABLE`, `FIX SNAPSHOT-STALE`,
 `FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
-`FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`.
+`FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
+`FIX CLIENTE-SIN-REINTENTO`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -801,10 +802,13 @@ volver a agregar la PWA.
 
 ## Abiertos desde la auditoría del 14-nov-2026
 
-- **Los clientes no tienen reintento automático.** Rentas y abonos sí (`_pendingRentaWrites`,
-  `_pendingAbonoWrites`, con su flush durable). `_fbWriteCliente` sólo deja la marca
-  `_fallosEscrituraCliente` que agregó `FIX GUARDADO-MUDO`: ahora se SABE que falló y se avisa,
-  pero nadie lo vuelve a intentar. Falta engancharlo a `_flushPendingRentaWrites`.
+- ~~**Los clientes no tienen reintento automático**~~ → **ARREGLADO v171 (15-nov-2026)**,
+  `FIX CLIENTE-SIN-REINTENTO`. `_fallosEscrituraCliente` —que era sólo una marca de fallo—
+  pasó a ser `_pendingClienteWrites`, una cola igual que la de abonos: se encola antes de
+  intentar, persiste en localStorage, se reintenta en `_flushPendingRentaWrites` después de
+  los borrados, y tiene tope vía `_seAgotaronLosIntentos`. `_guardoBien('cliente')` lee esa
+  cola, así que la señal es **una sola**.
+  **Con esto los tres tipos —rentas, clientes y abonos— tienen cola durable con tope.**
 - **Quedan 12 `try/catch` alrededor de escritores que no relanzan.** `FIX GUARDADO-MUDO` arregló
   los 5 que le mentían al usuario o contaban mal; los otros 12 sólo escriben en consola, así que
   son inofensivos y se dejaron intactos. **Si tocas uno, no te fíes de su `catch`**: usa
