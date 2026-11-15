@@ -4107,7 +4107,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v168 · 15-nov-2026';
+var APP_VERSION = 'v169 · 15-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -24152,24 +24152,75 @@ async function _confirmarCambioInquilino() {
   // la misma guardia. Si no se puede verificar contra el servidor se aborta el cambio: la
   // propiedad y su inquilino actual quedan intactos y se puede reintentar.
   if (!await _asegurarAbonosCompletosParaBaja(r, 'CambioInquilino')) { closeModal('modalMotivoSalida'); return; }
+  // FIX CAMBIO-ORDEN-DESTRUCTIVO (2026-11): la foto se toma ANTES de archivar, igual que en
+  // confirmarBajaInquilino (v158). Si se tomara después, al deshacer quedaría la ficha del
+  // saliente archivada Y el mismo inquilino activo a la vez — sus pagos contados dos veces.
+  var _cambioSnap = {
+    clienteId: r.clienteId, deposito: r.deposito, _vacatedAt: r._vacatedAt,
+    renovaciones: r.renovaciones,
+    historialInquilinos: (r.historialInquilinos || []).slice()
+  };
   registrarSalidaInquilino(r, pending.prevClienteId, motivo);
   // FIX BAJA-SIN-ARCHIVAR (2026-09): este es el camino por el que se perdieron los 5 pagos de
   // TAMESIS DEPA F — el inquilino saliente nunca llegó a historialInquilinos y aun así se
   // borraron sus abonos. Si no quedó ficha, se aborta el cambio sin tocar nada.
   if (!_seArchivoElInquilino(r, pending.prevClienteId, 'CambioInquilino')) { closeModal('modalMotivoSalida'); return; }
+
+  // FIX CAMBIO-ORDEN-DESTRUCTIVO (2026-11): este es el CUARTO camino de baja —además de la
+  // inmediata, la programada y la automática— y era el último que seguía con el orden al
+  // revés que `FIX BAJA-ORDEN-DESTRUCTIVO` (v158) curó en confirmarBajaInquilino: borraba
+  // los pagos de la nube y sólo al final, vía _guardarRentaConLimite(), persistía la
+  // propiedad con la ficha dentro. Si esa escritura no aterrizaba, los pagos ya no existían
+  // en el servidor y la ficha —la ÚNICA copia que queda de ellos— se quedaba sólo en la
+  // memoria de ese aparato. Es, con mucha probabilidad, lo que se llevó los pagos de
+  // Algodoneros en Lisboa #186-B y TAMESIS DEPA F en octubre.
+  // Ahora: primero se PERSISTE la propiedad con la ficha; sólo si esa escritura se confirmó
+  // se borran los pagos. Si falla, se deshace en memoria y se aborta sin tocar un solo pago,
+  // dejando la propiedad con su inquilino actual para poder reintentar.
   if (r.deposito && r.deposito.devuelto) r.deposito = null;
   r.deposito = null;
-  // FIX BAJA-RESURRECT V2: marcar timestamp de baja + AWAIT del delete para evitar
-  // que un snapshot stale resucite a los ex-inquilinos durante el cambio.
+  // FIX BAJA-RESURRECT V2: marcar timestamp de baja para que un snapshot stale no resucite
+  // a los ex-inquilinos durante el cambio.
   r._vacatedAt = Date.now();
-  try { await _fbDeleteAllAbonosForRenta(r.id); }
-  catch(e) { console.error('[CambioInquilino] _fbDeleteAllAbonosForRenta fail:', e); }
-  r.abonos = [];
   r.renovaciones = [];
   // CRITICAL: clear clienteId NOW before calling _guardarRentaConLimite.
   // Without this, _guardarRentaConLimite sees prevClienteId = old client → re-triggers
   // the modal → double-confirmation loop → assignment never saves, abonos permanently lost.
   r.clienteId = '';
+
+  var _cambioPersistido = true;
+  if (state._rentasMigratedV2) {
+    _cambioPersistido = false;
+    try {
+      await _fbWriteRenta(r);
+      // _fbWriteRenta no relanza: la señal fiable es que no haya quedado encolada.
+      _cambioPersistido = _guardoBien('renta', r.id);
+    } catch(eW) { console.error('[CambioInquilino] _fbWriteRenta fail:', eW); }
+  }
+  if (!_cambioPersistido) {
+    r.clienteId = _cambioSnap.clienteId;
+    r.deposito = _cambioSnap.deposito;
+    r.renovaciones = _cambioSnap.renovaciones;
+    r.historialInquilinos = _cambioSnap.historialInquilinos;
+    if (_cambioSnap._vacatedAt === undefined) delete r._vacatedAt;
+    else r._vacatedAt = _cambioSnap._vacatedAt;
+    _clearStatusCache(r.id);
+    window._pendingCambioInquilino = null;
+    closeModal('modalMotivoSalida');
+    console.error('[CambioInquilino] ABORTADO: no se pudo guardar la propiedad en la nube. ' +
+      'No se borró ningún pago; la propiedad quedó con su inquilino actual.');
+    showAlert('No se pudo guardar el cambio de inquilino en la nube.\n\nNo se borró ningún pago y la ' +
+      'propiedad quedó exactamente como estaba, con su inquilino actual. Revisa tu conexión y ' +
+      'vuelve a intentarlo.', 'error');
+    render();
+    return;
+  }
+
+  // FIX BAJA-RESURRECT V2: AWAIT del delete para que los abonos estén borrados de Firestore
+  // antes de continuar. La ficha y el clienteId vacío ya viajaron en la escritura de arriba.
+  try { await _fbDeleteAllAbonosForRenta(r.id); }
+  catch(e) { console.error('[CambioInquilino] _fbDeleteAllAbonosForRenta fail:', e); }
+  r.abonos = [];
   window._pendingCambioInquilino = null;
   closeModal('modalMotivoSalida');
   // Resume _guardarRentaConLimite — now r.clienteId='' so no re-trigger of modal
