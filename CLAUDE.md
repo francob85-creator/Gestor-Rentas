@@ -221,7 +221,7 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX TS-APLANADO`, `FIX WRITE-DURABLE`, `FIX ABONO-DURABLE`, `FIX SNAPSHOT-STALE`,
 `FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
-`FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`.
+`FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -776,12 +776,15 @@ volver a agregar la PWA.
      **Regla para la próxima**: si el diálogo de instalación muestra el icono correcto,
      Chrome YA tiene el icono bueno — lo que se vea distinto en otro lado es caché del
      sistema operativo, no del manifiesto. No busques en el código.
-- **`start_url` del manifiesto incluye el `?v=NN`** (`start_url: window.location.href`).
-  Instalar desde `?v=167` y desde `?v=168` crea para Chrome **dos aplicaciones distintas**,
-  lo que deja accesos directos viejos colgados. No rompe nada hoy —no hay service worker,
-  así que el `?v=` sólo rompe caché y la app siempre carga el código más reciente— pero la
-  identidad de la app debería ser una sola. Cura: `start_url` sin query y un `id` fijo en el
-  manifiesto. Detectado el 15-nov-2026, **pendiente de autorización de Franco**.
+- ~~**`start_url` del manifiesto incluye el `?v=NN`**~~ → **ARREGLADO v170 (15-nov-2026)**,
+  `FIX PWA-IDENTIDAD-POR-VERSION`. Chrome identifica una PWA por su `start_url`, así que
+  instalarla desde `?v=167` y desde `?v=168` creaba **dos aplicaciones distintas** y la vieja
+  quedaba colgada con su acceso directo. Ahora `start_url` es `origin + pathname` (sin query
+  ni ancla) y hay un **`id` fijo** con esa misma URL absoluta — absoluta porque el manifiesto
+  vive en un `blob:`. Con `id` explícito la identidad ya no depende del `start_url`, así que
+  cambiarlo en el futuro no vuelve a partir la app en dos.
+  **Costo de una sola vez**: cambia la identidad. La app ya instalada sigue funcionando pero
+  deja de actualizarse desde este manifiesto; hay que desinstalarla y reinstalarla una vez.
 - **La regla "cuánto vale esta propiedad al mes" está escrita cuatro veces.** Una es
   `_montoMostrarRenta()` (la buena); las otras tres siguen en línea dentro de `renderDashboard`
   (×2) y `_verPropiedadesEnModal`. Unificarlas toca la aritmética del dashboard: necesita PLAN
