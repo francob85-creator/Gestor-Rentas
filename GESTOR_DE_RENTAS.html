@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v170 · 15-nov-2026';
+var APP_VERSION = 'v171 · 15-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -4974,7 +4974,13 @@ var _pendingAbonosPurge = {};    // { rentaId: intentos } — re-ejecuta _fbDele
 // si la escritura aterrizó; los clientes NO tenían ninguna señal. Esto la crea, para que
 // _guardoBien() pueda contestar también por ellos. OJO: es sólo una marca, todavía NO hay
 // reintento automático de clientes — eso queda anotado como pendiente aparte.
-var _fallosEscrituraCliente = {};  // { clienteId: timestamp del último fallo }
+// FIX CLIENTE-SIN-REINTENTO (2026-11): esto era sólo una MARCA de fallo (el timestamp del
+// último error) que agregó FIX GUARDADO-MUDO. Servía para saber que la escritura no aterrizó
+// y avisarlo, pero nadie la reintentaba: rentas y abonos tienen cola durable y los clientes
+// no, así que un cliente que fallara al guardar se quedaba sólo en este aparato hasta que
+// alguien lo volviera a editar a mano. Ahora es una cola igual que _pendingAbonoWrites, con
+// su reintento en _flushPendingRentaWrites, su persistencia en localStorage y su tope.
+var _pendingClienteWrites = {};  // { clienteId: intentos } — FIX CLIENTE-SIN-REINTENTO
 
 // FIX REINTENTO-SIN-TOPE (2026-11): las siete colas de reintento CONTABAN los intentos pero
 // nadie los comparaba nunca contra un máximo — no existía una sola comparación así en todo el
@@ -5024,7 +5030,7 @@ function _guardoBien(tipo, id) {
   if (tipo === 'renta')    return _pendingRentaWrites[id] == null;
   if (tipo === 'abono')    return _pendingAbonoWrites[id] == null;
   if (tipo === 'abonoDel') return _pendingAbonoDeletes[id] == null;
-  if (tipo === 'cliente')  return _fallosEscrituraCliente[id] == null;
+  if (tipo === 'cliente')  return _pendingClienteWrites[id] == null;
   return true;
 }
 function _lsLoadPendingDeletesV2() {
@@ -5032,12 +5038,14 @@ function _lsLoadPendingDeletesV2() {
   try { var s2 = localStorage.getItem('gr_pending_abono_deletes'); if (s2) _pendingAbonoDeletes = JSON.parse(s2) || {}; } catch(e2) { _pendingAbonoDeletes = {}; }
   try { var s3 = localStorage.getItem('gr_pending_abonos_purge'); if (s3) _pendingAbonosPurge = JSON.parse(s3) || {}; } catch(e3) { _pendingAbonosPurge = {}; }
   try { var s4 = localStorage.getItem('gr_pending_abono_writes'); if (s4) _pendingAbonoWrites = JSON.parse(s4) || {}; } catch(e4) { _pendingAbonoWrites = {}; } // FIX ABONO-DURABLE
+  try { var s5 = localStorage.getItem('gr_pending_cliente_writes'); if (s5) _pendingClienteWrites = JSON.parse(s5) || {}; } catch(e5) { _pendingClienteWrites = {}; } // FIX CLIENTE-SIN-REINTENTO
 }
 function _lsSavePendingDeletesV2() {
   try { localStorage.setItem('gr_pending_cliente_deletes', JSON.stringify(_pendingClienteDeletes)); } catch(e1) {}
   try { localStorage.setItem('gr_pending_abono_deletes', JSON.stringify(_pendingAbonoDeletes)); } catch(e2) {}
   try { localStorage.setItem('gr_pending_abonos_purge', JSON.stringify(_pendingAbonosPurge)); } catch(e3) {}
   try { localStorage.setItem('gr_pending_abono_writes', JSON.stringify(_pendingAbonoWrites)); } catch(e4) {} // FIX ABONO-DURABLE
+  try { localStorage.setItem('gr_pending_cliente_writes', JSON.stringify(_pendingClienteWrites)); } catch(e5) {} // FIX CLIENTE-SIN-REINTENTO
 }
 // FIX SANITIZE-PERSIST (2026-07): ids de rentas cuyo monto corrigió el sanitizador,
 // pendientes de persistir UNA vez a Firestore.
@@ -5234,7 +5242,24 @@ async function _flushPendingRentaWrites() {
     }
     _lsSavePendingDeletesV2();
   }
-  if (Object.keys(_pendingClienteDeletes).length || Object.keys(_pendingAbonoDeletes).length || Object.keys(_pendingAbonosPurge).length || Object.keys(_pendingAbonoWrites).length) {
+  // FIX CLIENTE-SIN-REINTENTO (2026-11): espejo del bloque de abonos de arriba. Va DESPUÉS de
+  // los borrados: si el cliente tiene un borrado encolado, el borrado gana y la escritura se
+  // descarta. Si el cliente ya no existe en el estado, también se descarta.
+  var _cwIds = Object.keys(_pendingClienteWrites);
+  if (_cwIds.length && _fbAuth && !(typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    for (var _cwi = 0; _cwi < _cwIds.length; _cwi++) {
+      var _cwId = _cwIds[_cwi];
+      if (_pendingClienteDeletes[_cwId] != null) { delete _pendingClienteWrites[_cwId]; continue; }
+      var _cwCli = null;
+      for (var _cwr = 0; _cwr < state.clientes.length; _cwr++) { if (state.clientes[_cwr].id === _cwId) { _cwCli = state.clientes[_cwr]; break; } }
+      if (!_cwCli) { delete _pendingClienteWrites[_cwId]; continue; }
+      if (_seAgotaronLosIntentos(_pendingClienteWrites, _cwId, 'el cliente ' + (_cwCli.nombre || _cwId), true)) continue;
+      console.warn('[CLIENTE-DURABLE] Reintentando escritura del cliente ' + (_cwCli.nombre || _cwId) + ' (informativo).');
+      try { await _fbWriteCliente(_cwCli); } catch(eCW) {}
+    }
+    _lsSavePendingDeletesV2();
+  }
+  if (Object.keys(_pendingClienteDeletes).length || Object.keys(_pendingAbonoDeletes).length || Object.keys(_pendingAbonosPurge).length || Object.keys(_pendingAbonoWrites).length || Object.keys(_pendingClienteWrites).length) {
     _scheduleFlushRentaWrites(20000);
   }
   // FIX BORRADO-DURABLE: procesar PRIMERO los borrados pendientes — la intención explícita
@@ -5368,12 +5393,20 @@ async function _fbWriteCliente(cliente) {
     var data = _sanitizeForFirestore(_stripClienteForSync(cliente));
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     data._sessionId = _fbSessionId;
+    // FIX CLIENTE-SIN-REINTENTO (2026-11): se encola ANTES de intentar, igual que
+    // _fbWriteAbono — si la app muere a media escritura, la entrada sobrevive y el flush
+    // la reintenta en el próximo arranque.
+    _pendingClienteWrites[cliente.id] = _pendingClienteWrites[cliente.id] || 0;
+    _lsSavePendingDeletesV2();
     await col.doc(cliente.id).set(data);
-    delete _fallosEscrituraCliente[cliente.id];   // FIX GUARDADO-MUDO: aterrizó
+    delete _pendingClienteWrites[cliente.id];   // aterrizó
+    _lsSavePendingDeletesV2();
   } catch(e) {
     console.error('[Fase2] _fbWriteCliente error:', e.message);
-    _fallosEscrituraCliente[cliente.id] = Date.now();  // FIX GUARDADO-MUDO: NO aterrizó
-    showToast('⚠️ Error al guardar cliente. Verifica tu conexión.');
+    _pendingClienteWrites[cliente.id] = (_pendingClienteWrites[cliente.id] || 0) + 1;  // NO aterrizó
+    _lsSavePendingDeletesV2();
+    _scheduleFlushRentaWrites(8000);
+    showToast('⚠️ Error al guardar cliente. Se reintentará automáticamente.');
   }
 }
 
