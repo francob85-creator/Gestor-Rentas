@@ -220,7 +220,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX SUBEMAILVAL`, `FIX AFTERLOGIN-FOSIL`, `FIX ABONO-UNDEFINED`, `FIX CLIENTE-UNDEFINED`,
 `FIX TS-APLANADO`, `FIX WRITE-DURABLE`, `FIX ABONO-DURABLE`, `FIX SNAPSHOT-STALE`,
 `FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
-`FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`.
+`FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
+`FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -733,14 +734,17 @@ volver a agregar la PWA.
   nada que programar aquí y no hay que volver a proponerlo.
   Hueco latente que salió de paso, real pero NO culpable de estos dos casos: `deposito` no
   está en `_criticalFields` ni en `_critFields2`, así que ningún snapshot lo protege.
-- **El CAMBIO DE INQUILINO es un CUARTO camino de baja** (`_confirmarCambioInquilino`), además
-  de los tres que menciona LA SEGUNDA LECCIÓN. Y **todavía tiene el orden destructivo** que
-  `FIX BAJA-ORDEN-DESTRUCTIVO` (v158) curó en `confirmarBajaInquilino`: archiva la ficha en
-  memoria, **borra los pagos de la nube**, y sólo al final `_guardarRentaConLimite()` persiste
-  la propiedad. Si esa escritura no aterriza, los pagos se fueron y la ficha se queda sólo en
-  la memoria de ese aparato. Es, con mucha probabilidad, lo que les pasó a los dos casos de
-  Algodoneros en octubre. **Pendiente de autorización de Franco** — la cura es la misma de la
-  v158: persistir primero, borrar después, y abortar deshaciendo si no se pudo guardar.
+- ~~**El CAMBIO DE INQUILINO es un CUARTO camino de baja con el orden destructivo**~~ →
+  **ARREGLADO v169 (15-nov-2026)**, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, en
+  `_confirmarCambioInquilino`. Era el último que quedaba con el orden al revés. Ahora, como
+  en la v158: persiste la propiedad con la ficha PRIMERO y sólo entonces borra los pagos; si
+  la escritura no aterriza, deshace y aborta sin tocar un pago.
+  **Con esto los CUATRO caminos de baja persisten antes de destruir** — la inmediata, la
+  programada, la automática y el cambio de inquilino. Si aparece un quinto, tiene que
+  hacer lo mismo.
+  Detalle que costó una segunda pasada y conviene recordar: **la foto para deshacer se toma
+  ANTES de `registrarSalidaInquilino`**. Tomada después, al deshacer queda la ficha del
+  saliente archivada Y el mismo inquilino activo a la vez, con sus pagos contados dos veces.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
