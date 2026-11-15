@@ -3943,6 +3943,162 @@ function _loadDocx(callback) {
 </script>
 
 <script>
+(function() {
+  // FIX PWA-MUERE-CON-FIREBASE (2026-11): este bloque vivía al FINAL del bloque de script
+  // gigante de la app (de la línea ~3945 a la ~28570), DESPUÉS de firebase.initializeApp.
+  // Si el CDN de Firebase no carga, initializeApp lanza y mata ese bloque ENTERO —unas
+  // 24,500 líneas— así que el manifiesto nunca llegaba a asignarse: la PWA se quedaba sin
+  // icono y sin nombre, además de sin app. Se detectó el 15-nov-2026 diagnosticando
+  // FIX ICONO-PWA-CHROME, porque en el entorno de pruebas ese CDN está bloqueado y el
+  // síntoma salió solo.
+  // Ahora vive en su propio bloque: un error en el de la app ya no puede alcanzarlo, y de
+  // paso el manifiesto queda listo antes. El código se movió TAL CUAL, sin un cambio: no
+  // usa ninguna función de la app, sólo APIs del navegador (verificado), y lo que toca del
+  // DOM lo toca dentro de manejadores que corren después.
+  // OJO al editar: no escribir la etiqueta de apertura de script dentro de un comentario
+  // HTML en este archivo — validate.js y el navegador la leen como etiqueta de verdad y
+  // parten el bloque en dos. Pasó al hacer este mismo movimiento.
+  // ── SVG icon as base64 data URI ─────────────────────────
+  var iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#1b4332"/>
+        <stop offset="100%" stop-color="#2d6a4f"/>
+      </linearGradient>
+      <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e2c97e"/>
+        <stop offset="100%" stop-color="#c8a85a"/>
+      </linearGradient>
+    </defs>
+    <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+    <!-- House roof -->
+    <path d="M256 100 L400 210 L380 210 L380 370 L310 370 L310 280 L202 280 L202 370 L132 370 L132 210 L112 210 Z" fill="none" stroke="url(#gold)" stroke-width="18" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Door -->
+    <rect x="222" y="290" width="68" height="80" rx="6" fill="url(#gold)" opacity="0.35"/>
+    <!-- Key symbol inside door -->
+    <circle cx="256" cy="325" r="14" fill="none" stroke="url(#gold)" stroke-width="5"/>
+    <line x1="256" y1="339" x2="256" y2="358" stroke="url(#gold)" stroke-width="5" stroke-linecap="round"/>
+    <line x1="256" y1="350" x2="264" y2="350" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+    <!-- Dollar sign accent on roof -->
+    <text x="256" y="195" text-anchor="middle" font-size="52" fill="#c8a85a" font-family="Arial,sans-serif" font-weight="bold" opacity="0.9">$</text>
+    <!-- Brand name -->
+    <text x="256" y="440" text-anchor="middle" font-size="62" fill="#e2c97e" font-family="Georgia,serif" font-weight="bold" letter-spacing="2">GestorRenta</text>
+  </svg>`;
+  var iconB64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(iconSvg)));
+
+  // ── Apple touch icon ─────────────────────────────────────
+  // FIX ICONO-PWA-IOS (2026-10): aquí se sobrescribía el apple-touch-icon con iconB64, que es un
+  // SVG. iOS NO admite SVG para el icono de pantalla de inicio — solo PNG — así que al agregar la
+  // PWA se quedaba sin icono y Safari ponía el genérico (fondo negro con la inicial).
+  // El resultado dependía de una carrera: si el usuario agregaba la app ANTES de que este
+  // JavaScript corriera, iOS alcanzaba a leer el PNG del <head> y el logo salía bien; si ya había
+  // corrido, leía el SVG y no lo entendía. De ahí que a Franco le saliera el logo la primera vez
+  // y la G genérica al reinstalarla (26-oct-2026).
+  // La cura es no tocarlo: el <link rel="apple-touch-icon"> del HTML ya trae el logo en PNG de
+  // 180x180, que es exactamente lo que iOS espera. iconB64 se sigue usando para el manifest
+  // (Android/Chrome sí admiten SVG), que es para lo que se generó.
+
+  // ── Inline manifest via Blob URL ─────────────────────────
+  // FIX ICONO-PWA-CHROME (2026-11): absolutas a fuerza — el manifiesto vive en un blob: y
+  // una ruta relativa dentro de él no resuelve contra el sitio.
+  var _iconoPng192 = new URL('icon-192.png', window.location.href).href;
+  var _iconoPng512 = new URL('icon-512.png', window.location.href).href;
+  var manifest = {
+    name: 'GestorRenta',
+    short_name: 'GestorRenta',
+    description: 'Gestión de rentas e inquilinos',
+    start_url: window.location.href,
+    display: 'standalone',
+    orientation: 'portrait-primary',
+    background_color: '#f9f9fb',
+    theme_color: '#1b3a2d',
+    lang: 'es',
+    icons: [
+      // FIX ICONO-PWA-CHROME (2026-11): el manifiesto sólo ofrecía SVG, y ese SVG no traía
+      // width/height — sin eso un SVG NO tiene tamaño propio y Chrome lo medía en 150x150
+      // aunque aquí se declarara 192 y 512. Los tamaños declarados mentían y Chrome, al no
+      // encontrar un icono utilizable, ponía la letra genérica ("G"). Lo reportó Franco el
+      // 15-nov-2026 al instalar la PWA desde Chrome.
+      // Es el MISMO error que FIX ICONO-PWA-IOS (2026-10) ya había costado en iOS: allá se
+      // curó poniendo un PNG, y aquí se dejó el SVG confiando en el comentario de arriba
+      // ("Android/Chrome sí admiten SVG"), suposición que nunca se comprobó.
+      // Cura: PNG reales de 192 y 512, generados desde ESTE mismo SVG para que el logo sea
+      // idéntico. Van primero porque es lo que Chrome rasteriza sin dudas. La URL tiene que
+      // ser ABSOLUTA: el manifiesto es un blob y las rutas relativas no resuelven desde ahí.
+      // El SVG se queda al final como respaldo vectorial, ya con su tamaño propio arreglado.
+      { src: _iconoPng192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: _iconoPng512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: _iconoPng512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: iconB64,      sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
+    ]
+  };
+  var manifestBlob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+  var manifestURL = URL.createObjectURL(manifestBlob); // kept alive — needed for <link rel=manifest>
+  document.getElementById('pwa-manifest').href = manifestURL;
+
+  // ── Inline Service Worker via Blob ───────────────────────
+  // Service worker removido — el navegador siempre carga la versión más reciente
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      regs.forEach(function(r) { r.unregister(); });
+    }).catch(function(e){ console.warn('[SW] registration error:', e.message); });
+  }
+
+  // ── Install prompt logic ─────────────────────────────────
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var isAndroid = /android/i.test(navigator.userAgent);
+  var isStandalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  var dismissed = localStorage.getItem('pwa_banner_dismissed');
+
+  var deferredPrompt = null;
+
+  // Android: capture beforeinstallprompt
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (!isStandalone && !dismissed) {
+      document.getElementById('pwa-banner').classList.add('show');
+    }
+  });
+
+  // iOS: show instructions banner
+  if (isIOS && !isStandalone && !dismissed) {
+    setTimeout(function(){
+      document.getElementById('pwa-banner').classList.add('show');
+    }, 2500);
+  }
+
+  window.pwaInstall = function() {
+    if (deferredPrompt) {
+      // Android native prompt
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function(choice) {
+        if (choice.outcome === 'accepted') pwaDismiss();
+        deferredPrompt = null;
+      }).catch(function(e){ console.warn('[PWA] choice error:', e.message); });
+    } else if (isIOS) {
+      // iOS instructions
+      document.getElementById('pwa-banner').classList.remove('show');
+      document.getElementById('ios-install-modal').classList.add('show');
+    }
+  };
+
+  window.pwaDismiss = function() {
+    document.getElementById('pwa-banner').classList.remove('show');
+    try { localStorage.setItem('pwa_banner_dismissed', '1'); } catch(e) {}
+  };
+
+  // Reset dismiss if re-opened after 7 days
+  var dismissedAt = parseInt(localStorage.getItem('pwa_banner_dismissed_at') || '0');
+  if (Date.now() - dismissedAt > 7 * 86400000) {
+    localStorage.removeItem('pwa_banner_dismissed');
+  }
+})();
+</script>
+
+
+<script>
 
 // ============================================================
 // VERSIÓN DE LA APP — ⚠️ SUBIR ESTE NÚMERO EN CADA DESPLIEGUE ⚠️
@@ -3951,7 +4107,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v167 · 15-nov-2026';
+var APP_VERSION = 'v168 · 15-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -28088,144 +28244,6 @@ if (document.readyState === 'loading') {
 // ============================================================
 // PWA — MANIFEST + SERVICE WORKER + INSTALL PROMPT
 // ============================================================
-(function() {
-  // ── SVG icon as base64 data URI ─────────────────────────
-  var iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#1b4332"/>
-        <stop offset="100%" stop-color="#2d6a4f"/>
-      </linearGradient>
-      <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#e2c97e"/>
-        <stop offset="100%" stop-color="#c8a85a"/>
-      </linearGradient>
-    </defs>
-    <rect width="512" height="512" rx="108" fill="url(#bg)"/>
-    <!-- House roof -->
-    <path d="M256 100 L400 210 L380 210 L380 370 L310 370 L310 280 L202 280 L202 370 L132 370 L132 210 L112 210 Z" fill="none" stroke="url(#gold)" stroke-width="18" stroke-linejoin="round" stroke-linecap="round"/>
-    <!-- Door -->
-    <rect x="222" y="290" width="68" height="80" rx="6" fill="url(#gold)" opacity="0.35"/>
-    <!-- Key symbol inside door -->
-    <circle cx="256" cy="325" r="14" fill="none" stroke="url(#gold)" stroke-width="5"/>
-    <line x1="256" y1="339" x2="256" y2="358" stroke="url(#gold)" stroke-width="5" stroke-linecap="round"/>
-    <line x1="256" y1="350" x2="264" y2="350" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
-    <!-- Dollar sign accent on roof -->
-    <text x="256" y="195" text-anchor="middle" font-size="52" fill="#c8a85a" font-family="Arial,sans-serif" font-weight="bold" opacity="0.9">$</text>
-    <!-- Brand name -->
-    <text x="256" y="440" text-anchor="middle" font-size="62" fill="#e2c97e" font-family="Georgia,serif" font-weight="bold" letter-spacing="2">GestorRenta</text>
-  </svg>`;
-  var iconB64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(iconSvg)));
-
-  // ── Apple touch icon ─────────────────────────────────────
-  // FIX ICONO-PWA-IOS (2026-10): aquí se sobrescribía el apple-touch-icon con iconB64, que es un
-  // SVG. iOS NO admite SVG para el icono de pantalla de inicio — solo PNG — así que al agregar la
-  // PWA se quedaba sin icono y Safari ponía el genérico (fondo negro con la inicial).
-  // El resultado dependía de una carrera: si el usuario agregaba la app ANTES de que este
-  // JavaScript corriera, iOS alcanzaba a leer el PNG del <head> y el logo salía bien; si ya había
-  // corrido, leía el SVG y no lo entendía. De ahí que a Franco le saliera el logo la primera vez
-  // y la G genérica al reinstalarla (26-oct-2026).
-  // La cura es no tocarlo: el <link rel="apple-touch-icon"> del HTML ya trae el logo en PNG de
-  // 180x180, que es exactamente lo que iOS espera. iconB64 se sigue usando para el manifest
-  // (Android/Chrome sí admiten SVG), que es para lo que se generó.
-
-  // ── Inline manifest via Blob URL ─────────────────────────
-  // FIX ICONO-PWA-CHROME (2026-11): absolutas a fuerza — el manifiesto vive en un blob: y
-  // una ruta relativa dentro de él no resuelve contra el sitio.
-  var _iconoPng192 = new URL('icon-192.png', window.location.href).href;
-  var _iconoPng512 = new URL('icon-512.png', window.location.href).href;
-  var manifest = {
-    name: 'GestorRenta',
-    short_name: 'GestorRenta',
-    description: 'Gestión de rentas e inquilinos',
-    start_url: window.location.href,
-    display: 'standalone',
-    orientation: 'portrait-primary',
-    background_color: '#f9f9fb',
-    theme_color: '#1b3a2d',
-    lang: 'es',
-    icons: [
-      // FIX ICONO-PWA-CHROME (2026-11): el manifiesto sólo ofrecía SVG, y ese SVG no traía
-      // width/height — sin eso un SVG NO tiene tamaño propio y Chrome lo medía en 150x150
-      // aunque aquí se declarara 192 y 512. Los tamaños declarados mentían y Chrome, al no
-      // encontrar un icono utilizable, ponía la letra genérica ("G"). Lo reportó Franco el
-      // 15-nov-2026 al instalar la PWA desde Chrome.
-      // Es el MISMO error que FIX ICONO-PWA-IOS (2026-10) ya había costado en iOS: allá se
-      // curó poniendo un PNG, y aquí se dejó el SVG confiando en el comentario de arriba
-      // ("Android/Chrome sí admiten SVG"), suposición que nunca se comprobó.
-      // Cura: PNG reales de 192 y 512, generados desde ESTE mismo SVG para que el logo sea
-      // idéntico. Van primero porque es lo que Chrome rasteriza sin dudas. La URL tiene que
-      // ser ABSOLUTA: el manifiesto es un blob y las rutas relativas no resuelven desde ahí.
-      // El SVG se queda al final como respaldo vectorial, ya con su tamaño propio arreglado.
-      { src: _iconoPng192, sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: _iconoPng512, sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: _iconoPng512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-      { src: iconB64,      sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
-    ]
-  };
-  var manifestBlob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
-  var manifestURL = URL.createObjectURL(manifestBlob); // kept alive — needed for <link rel=manifest>
-  document.getElementById('pwa-manifest').href = manifestURL;
-
-  // ── Inline Service Worker via Blob ───────────────────────
-  // Service worker removido — el navegador siempre carga la versión más reciente
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(regs) {
-      regs.forEach(function(r) { r.unregister(); });
-    }).catch(function(e){ console.warn('[SW] registration error:', e.message); });
-  }
-
-  // ── Install prompt logic ─────────────────────────────────
-  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  var isAndroid = /android/i.test(navigator.userAgent);
-  var isStandalone = window.navigator.standalone === true ||
-    window.matchMedia('(display-mode: standalone)').matches;
-  var dismissed = localStorage.getItem('pwa_banner_dismissed');
-
-  var deferredPrompt = null;
-
-  // Android: capture beforeinstallprompt
-  window.addEventListener('beforeinstallprompt', function(e) {
-    e.preventDefault();
-    deferredPrompt = e;
-    if (!isStandalone && !dismissed) {
-      document.getElementById('pwa-banner').classList.add('show');
-    }
-  });
-
-  // iOS: show instructions banner
-  if (isIOS && !isStandalone && !dismissed) {
-    setTimeout(function(){
-      document.getElementById('pwa-banner').classList.add('show');
-    }, 2500);
-  }
-
-  window.pwaInstall = function() {
-    if (deferredPrompt) {
-      // Android native prompt
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(function(choice) {
-        if (choice.outcome === 'accepted') pwaDismiss();
-        deferredPrompt = null;
-      }).catch(function(e){ console.warn('[PWA] choice error:', e.message); });
-    } else if (isIOS) {
-      // iOS instructions
-      document.getElementById('pwa-banner').classList.remove('show');
-      document.getElementById('ios-install-modal').classList.add('show');
-    }
-  };
-
-  window.pwaDismiss = function() {
-    document.getElementById('pwa-banner').classList.remove('show');
-    try { localStorage.setItem('pwa_banner_dismissed', '1'); } catch(e) {}
-  };
-
-  // Reset dismiss if re-opened after 7 days
-  var dismissedAt = parseInt(localStorage.getItem('pwa_banner_dismissed_at') || '0');
-  if (Date.now() - dismissedAt > 7 * 86400000) {
-    localStorage.removeItem('pwa_banner_dismissed');
-  }
-})();
 
 // ════════════════════════════════════════════════════════
 // ESCÁNER DE CÁMARA → PDF  (usa jsPDF)
