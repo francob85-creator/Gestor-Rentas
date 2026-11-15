@@ -758,6 +758,26 @@ volver a agregar la PWA.
   `FIX REP-SIN-TIMBRE`, en `confirmarComplementoPago()`. Mismo patrón que su gemela
   `confirmarFactura()`. **Pendiente de confirmar en vivo**: el próximo REP que timbre Franco
   debe bajar el contador en 1 y dejar su renglón en el historial de timbres.
+- ~~**Chrome ponía el icono genérico ("G") al instalar la PWA**~~ → **ARREGLADO v167-v168
+  (15-nov-2026)**, `FIX ICONO-PWA-CHROME` y `FIX PWA-MUERE-CON-FIREBASE`. Dos cosas que
+  conviene no volver a diagnosticar desde cero:
+  1. El manifiesto ofrecía sólo SVG, y ese SVG no traía `width`/`height`: sin eso un SVG
+     **no tiene tamaño propio** y Chrome lo medía 150×150 aunque se declarara 192 y 512.
+     Ahora hay `icon-192.png` e `icon-512.png` en el repo, generados desde ese mismo SVG.
+     **Al cambiar el logo hay que regenerar los dos PNG**, no sólo el SVG.
+  2. Tras publicarlo, el icono seguía mal **en la barra de tareas de Windows** aunque el
+     diálogo de instalación ya mostraba el bueno. No era código: **un acceso directo
+     anclado conserva su propia copia del icono, y reinstalar la app NO lo actualiza.**
+     Se resolvió desanclando, desinstalando, reinstalando y volviendo a anclar.
+     **Regla para la próxima**: si el diálogo de instalación muestra el icono correcto,
+     Chrome YA tiene el icono bueno — lo que se vea distinto en otro lado es caché del
+     sistema operativo, no del manifiesto. No busques en el código.
+- **`start_url` del manifiesto incluye el `?v=NN`** (`start_url: window.location.href`).
+  Instalar desde `?v=167` y desde `?v=168` crea para Chrome **dos aplicaciones distintas**,
+  lo que deja accesos directos viejos colgados. No rompe nada hoy —no hay service worker,
+  así que el `?v=` sólo rompe caché y la app siempre carga el código más reciente— pero la
+  identidad de la app debería ser una sola. Cura: `start_url` sin query y un `id` fijo en el
+  manifiesto. Detectado el 15-nov-2026, **pendiente de autorización de Franco**.
 - **La regla "cuánto vale esta propiedad al mes" está escrita cuatro veces.** Una es
   `_montoMostrarRenta()` (la buena); las otras tres siguen en línea dentro de `renderDashboard`
   (×2) y `_verPropiedadesEnModal`. Unificarlas toca la aritmética del dashboard: necesita PLAN
