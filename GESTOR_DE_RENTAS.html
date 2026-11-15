@@ -4003,11 +4003,25 @@ function _loadDocx(callback) {
   // una ruta relativa dentro de él no resuelve contra el sitio.
   var _iconoPng192 = new URL('icon-192.png', window.location.href).href;
   var _iconoPng512 = new URL('icon-512.png', window.location.href).href;
+  // FIX PWA-IDENTIDAD-POR-VERSION (2026-11): start_url era window.location.href, que incluye
+  // el `?v=NN` con que Franco abre la app para saltarse la caché. Chrome identifica una PWA
+  // por su start_url, así que instalarla desde ?v=167 y desde ?v=168 creaba DOS aplicaciones
+  // distintas, y la vieja quedaba colgada con su acceso directo. Se detectó el 15-nov-2026
+  // investigando por qué la barra de tareas seguía con el icono anterior.
+  // Cura: start_url sin query ni ancla, y un `id` FIJO. Con `id` explícito la identidad deja
+  // de depender del start_url, así que un cambio futuro de la URL de arranque ya no vuelve a
+  // partir la app en dos. Se usa la URL absoluta porque el manifiesto vive en un blob:.
+  // OJO: esto cambia la identidad UNA vez. La app ya instalada sigue funcionando igual —
+  // conserva su icono y su nombre—, pero deja de actualizarse desde este manifiesto. Para
+  // que quede bajo la identidad nueva hay que desinstalarla y volverla a instalar, una sola
+  // vez. De ahí en adelante la identidad es estable, instales desde el ?v= que instales.
+  var _urlBase = window.location.origin + window.location.pathname;
   var manifest = {
+    id: _urlBase,
     name: 'GestorRenta',
     short_name: 'GestorRenta',
     description: 'Gestión de rentas e inquilinos',
-    start_url: window.location.href,
+    start_url: _urlBase,
     display: 'standalone',
     orientation: 'portrait-primary',
     background_color: '#f9f9fb',
@@ -4107,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v169 · 15-nov-2026';
+var APP_VERSION = 'v170 · 15-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
