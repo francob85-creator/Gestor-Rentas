@@ -3951,7 +3951,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v166 · 14-nov-2026';
+var APP_VERSION = 'v167 · 15-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -28090,7 +28090,7 @@ if (document.readyState === 'loading') {
 // ============================================================
 (function() {
   // ── SVG icon as base64 data URI ─────────────────────────
-  var iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  var iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="#1b4332"/>
@@ -28130,6 +28130,10 @@ if (document.readyState === 'loading') {
   // (Android/Chrome sí admiten SVG), que es para lo que se generó.
 
   // ── Inline manifest via Blob URL ─────────────────────────
+  // FIX ICONO-PWA-CHROME (2026-11): absolutas a fuerza — el manifiesto vive en un blob: y
+  // una ruta relativa dentro de él no resuelve contra el sitio.
+  var _iconoPng192 = new URL('icon-192.png', window.location.href).href;
+  var _iconoPng512 = new URL('icon-512.png', window.location.href).href;
   var manifest = {
     name: 'GestorRenta',
     short_name: 'GestorRenta',
@@ -28141,8 +28145,22 @@ if (document.readyState === 'loading') {
     theme_color: '#1b3a2d',
     lang: 'es',
     icons: [
-      { src: iconB64, sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
-      { src: iconB64, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+      // FIX ICONO-PWA-CHROME (2026-11): el manifiesto sólo ofrecía SVG, y ese SVG no traía
+      // width/height — sin eso un SVG NO tiene tamaño propio y Chrome lo medía en 150x150
+      // aunque aquí se declarara 192 y 512. Los tamaños declarados mentían y Chrome, al no
+      // encontrar un icono utilizable, ponía la letra genérica ("G"). Lo reportó Franco el
+      // 15-nov-2026 al instalar la PWA desde Chrome.
+      // Es el MISMO error que FIX ICONO-PWA-IOS (2026-10) ya había costado en iOS: allá se
+      // curó poniendo un PNG, y aquí se dejó el SVG confiando en el comentario de arriba
+      // ("Android/Chrome sí admiten SVG"), suposición que nunca se comprobó.
+      // Cura: PNG reales de 192 y 512, generados desde ESTE mismo SVG para que el logo sea
+      // idéntico. Van primero porque es lo que Chrome rasteriza sin dudas. La URL tiene que
+      // ser ABSOLUTA: el manifiesto es un blob y las rutas relativas no resuelven desde ahí.
+      // El SVG se queda al final como respaldo vectorial, ya con su tamaño propio arreglado.
+      { src: _iconoPng192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: _iconoPng512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: _iconoPng512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: iconB64,      sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
     ]
   };
   var manifestBlob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
