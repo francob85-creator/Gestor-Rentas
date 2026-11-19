@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v173 · 19-nov-2026';
+var APP_VERSION = 'v174 · 19-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -30048,7 +30048,12 @@ function renderFacturacion() {
           emisorNombre: _em ? _em.razon : '\u2014',
           mes: a.mes || '\u2014',
           rentaId: r.id,
-          abonoId: a.id
+          abonoId: a.id,
+          // FIX REP-SOLO-EN-PROPIEDAD (2026-11): esta pantalla arma su objeto a mano con campos
+          // selectos \u2014a diferencia de las otras dos, que pasan el abono completo con
+          // Object.assign\u2014, asi que sin esta linea la condicion del boton REP daria siempre
+          // falso y en silencio. Ver el bloque de abajo.
+          metodoPago: a.metodoPago
         });
         _uuidsVistas[a.uuid] = true;
       }
@@ -30121,6 +30126,15 @@ function renderFacturacion() {
       + '<button data-action="descargarXMLFactura" data-arg="' + f.rentaId + '" data-arg2="' + f.abonoId + '" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">XML</button>'
       + '<button data-action="cargarXMLManual" data-arg="' + f.rentaId + '" data-arg2="' + f.abonoId + '" style="background:none;border:1px solid var(--text3);color:var(--text3);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer" title="Cargar XML manual del SAT">📤</button>'
       + '<button data-action="cancelarFactura" data-arg="' + f.rentaId + '" data-arg2="' + f.abonoId + '" style="background:#7f1d1d;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-weight:600" title="Cancelar factura SAT">✕</button>'
+      // FIX REP-SOLO-EN-PROPIEDAD (2026-11): tercera y ultima de las tres pantallas que pintan
+      // esta fila. Misma condicion que sus gemelas (_renderDetalleAbonosTable ~17044 y
+      // renderDetalleCliente ~16700); solo cambia el padding a 2px 8px para igualar a los
+      // botones vecinos DE ESTA pantalla, que usan 8px y no 6px.
+      // Se excluyen las filas del registro permanente (fromRegistry): esas existen justamente
+      // porque su abono YA SE BORRO, y abrirModalComplementoPago lo busca en renta.abonos, asi
+      // que el boton no haria nada. Hoy ademas nunca traen metodoPago, pero la guardia va
+      // explicita para que siga siendo cierto si alguien le agrega el campo al registro.
+      + (f.metodoPago === 'PPD' && !f.fromRegistry && hasPerm('factura_write') ? '<button data-action="abrirModalComplementoPago" data-arg="' + f.rentaId + '" data-arg2="' + f.abonoId + '" style="background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-weight:600">REP</button>' : '')
       + '</div></td></tr>';
   });
   el.innerHTML = '<table class="payments-table"><thead><tr><th>Fecha</th><th>Propiedad</th><th>Cliente</th><th>Emisor</th><th>Mes</th><th>Monto</th><th>UUID</th><th></th></tr></thead><tbody>'
