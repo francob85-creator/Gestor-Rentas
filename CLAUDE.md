@@ -222,7 +222,7 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
 `FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
-`FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`.
+`FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`, `FIX REP-SOLO-EN-PROPIEDAD`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -702,6 +702,24 @@ las coincidencias de la línea completa daba 2 y parecía cerrado.
 > que se le muestra al usuario: la pantalla habría enseñado una base y se habría timbrado otra
 > — el desacuerdo entre pantallas que LA TERCERA LECCIÓN dice que es un bug, no una cifra.
 
+El mismo día, el mismo número de copias, otra vez: la **fila de una factura timbrada** (Timbrada,
+WA, PDF, XML, 📤, ✕) se pinta en **tres** funciones —`_renderDetalleAbonosTable` (propiedad),
+`renderDetalleCliente` y `renderFacturacion`— y el **botón REP sólo existía en la primera**
+(`FIX REP-SOLO-EN-PROPIEDAD`, v173). Franco no podía generar el complemento desde la pantalla del
+cliente aunque la factura estaba en PPD correctamente.
+
+> **Cómo se contó, y sirve para la próxima:** `grep -c` de cada `data-action` de esa fila.
+> `cancelarFactura`, `descargarXMLFactura`, `descargarPDFFactura`, `enviarFacturaWhatsApp` y
+> `cargarXMLManual` daban **3**; `abrirModalComplementoPago` y `revertirPagoFactura` daban **1**.
+> Un conteo de una línea señaló el hueco exacto. **Al agregar un botón a una fila que ya existe,
+> `grep -c` de sus vecinos: si ellos salen N veces y el tuyo 1, te faltan N−1.**
+
+Y la trampa de ese caso: dos de las tres pantallas pasan el abono completo
+(`Object.assign({}, a, {...})`), pero `renderFacturacion` **arma su objeto a mano con campos
+selectos** y no incluye `metodoPago`. Una condición copiada tal cual ahí daría siempre falso, en
+silencio. **Antes de copiar una condición a otra pantalla, confirma que el objeto de esa pantalla
+traiga el campo del que depende.**
+
 ---
 
 # DESPLIEGUE (lo hace Franco)
@@ -774,9 +792,25 @@ volver a agregar la PWA.
     —*"si falla, verifica los nombres de campos en relatedDocuments"*— así que la duda es
     vieja. Sospecha sin confirmar: el `taxRate` iba como **número** en el REP y como **cadena**
     en la factura normal, que sí funciona; la v172 lo alineó a la forma que funciona.
-  - **La prueba es el próximo REP de una propiedad con retención.** Si vuelve a salir con la
-    base completa, nuestro lado ya está bien y hay que reclamárselo a FiscalAPI con el CFDI
-    en la mano. **No volver a tocar el código antes de ver ese resultado.**
+  - **Nuestro lado quedó CONFIRMADO en vivo el 19-nov.** Franco abrió el payload real del REP de
+    Bodega Tajito 1 (pago del 11-nov, $12,489.99) y trae las **tres** líneas con
+    `taxBase: 11999.99` y las tasas `"0.160000"` / `"0.012500"` / `"0.106667"` como cadena.
+    Suman 12,489.99 exactos. El desglose del modal muestra lo mismo (en pesos redondos, porque
+    `fmt()` no imprime centavos: $12,000 / $1,920 / −$150 / −$1,280).
+  - **Lo que falta es ver el CFDI timbrado con ese payload.** Si vuelve a salir con la base
+    completa, nuestro lado ya está bien y hay que reclamárselo a FiscalAPI con el CFDI en la
+    mano. **No volver a tocar el código antes de ver ese resultado.**
+- **El botón REP todavía NO está en la pantalla de Facturación.** `FIX REP-SOLO-EN-PROPIEDAD`
+  (v173) lo agregó al detalle del cliente, que era lo que Franco pidió; de las tres pantallas
+  que pintan la fila de una factura, falta `renderFacturacion`. Son **dos** cambios, no uno:
+  el objeto `f` que arma esa pantalla (~30042) se construye a mano y **no incluye `metodoPago`**,
+  así que hay que agregarle el campo además del botón. Pendiente de que Franco lo pida.
+- **Firebase Storage bloquea por CORS la lectura de los XML desde el navegador.** Visto el
+  19-nov en la consola de Franco: `Access to fetch at firebasestorage.googleapis.com/...xml
+  from origin https://gestorrenta.com has been blocked by CORS policy: No
+  'Access-Control-Allow-Origin' header`. Ningún XML de las 14 facturas revisadas se pudo leer
+  desde Storage. Es configuración del bucket, no código. **Sin diagnosticar a fondo**; puede
+  estar afectando también al botón XML cuando el archivo no está en caché local.
   - El REP ya timbrado **no se corrige desde la app**: decisión de Franco (19-nov), lo arregla
     directo en el portal del SAT. Era el único afectado.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
