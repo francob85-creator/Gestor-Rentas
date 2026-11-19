@@ -805,12 +805,21 @@ volver a agregar la PWA.
   fila dan **3** cada uno. La guardia de cada pantalla es distinta y a propósito: el detalle
   del cliente excluye `_esHistorial` y Facturación excluye `fromRegistry` — en los dos casos
   el abono no vive en `renta.abonos` y `abrirModalComplementoPago` no lo encontraría.
-- **Firebase Storage bloquea por CORS la lectura desde el navegador.** Visto el 19-nov en la
-  consola de Franco: `Access to fetch at firebasestorage.googleapis.com/...xml from origin
-  https://gestorrenta.com has been blocked by CORS policy: No 'Access-Control-Allow-Origin'
-  header`. **Es configuración del bucket, no código, y no se puede arreglar desde el repo**:
-  hay que correr `gsutil cors set cors.json gs://gestor-rentas.firebasestorage.app` o usar la
-  consola de Google Cloud. Lo que SÍ está medido, leyendo el código:
+- ~~**Firebase Storage bloquea por CORS la lectura desde el navegador**~~ → **RESUELTO el
+  19-nov-2026.** El bucket `gestor-rentas.firebasestorage.app` **no tenía ninguna configuración
+  CORS** (`gsutil cors get` lo confirmó), así que el navegador bloqueaba toda lectura por código
+  desde gestorrenta.com. Franco aplicó la configuración desde Cloud Shell:
+  `gsutil cors set cors.json gs://gestor-rentas.firebasestorage.app`, con los cinco orígenes
+  (gestorrenta.com y gestorrentas.com con y sin www, más francob85-creator.github.io), método
+  **sólo `GET`/`HEAD`** y `maxAgeSeconds` 3600.
+  **Prueba A/B en el mismo navegador**, factura de noviembre de Bodega Tajito 1 (que no tiene
+  copia local del XML, así que obliga a ir a Storage): antes decía
+  `CFDI: (error: Failed to fetch)` con `blocked by CORS policy` en consola; después, `CFDI: PPD`
+  y cero errores. Concluyente.
+  **Ojo para el futuro:** esto vive en el bucket, no en el repo. Si algún día se migra de
+  proyecto o se crea un bucket nuevo, **la configuración CORS no se va con él** y el síntoma
+  vuelve. Es el mismo tipo de trampa que las reglas de Storage (ver LA CUARTA LECCIÓN).
+  Lo que esto arreglaba, medido leyendo el código antes de tocar nada:
   - **El botón XML NO está afectado.** `descargarXMLFactura` (~33014) y el del complemento
     (~33891) usan `window.open`, que no pasa por CORS. Siguen funcionando.
   - **Lo que sí rompe es el PDF.** `generarPDFFacturaLocal` (~32311) hace `fetch()` del XML
@@ -822,8 +831,20 @@ volver a agregar la PWA.
     `doc.addImage()`, envuelto en try/catch con `console.warn`. **No verificado** si falla por
     CORS o porque jsPDF no acepta una URL; el síntoma sería un PDF sin logo en los
     dispositivos que no tengan el `logoBase64` local.
-  - El REP ya timbrado **no se corrige desde la app**: decisión de Franco (19-nov), lo arregla
-    directo en el portal del SAT. Era el único afectado.
+- **Hallazgo nuevo del mismo barrido (19-nov): de 14 facturas timbradas, sólo UNA tiene su XML
+  en Storage.** Con el CORS ya arreglado, el script de revisión leyó el XML de Bodega Tajito 1
+  de noviembre, pero las otras 13 (mayo–octubre de esa propiedad y las 7 de Bodega Tajito 120-B)
+  dicen **"sin XML local ni en Storage"**: no tienen `xmlBase64` ni `xmlStorageURL`. **Eso ya no
+  es CORS** —el de noviembre sí subió—, es daño viejo de cuando las reglas de Storage sólo
+  cubrían `fichas/` y los `facturas/` fallaban al guardarse en silencio (LA CUARTA LECCIÓN).
+  **No es urgente y NO se tocó**, por dos razones verificadas en el código:
+  - `descargarXMLFactura` (~32959) y `generarPDFFacturaLocal` (~32324) tienen una **tercera**
+    red: si no hay XML local ni en Storage pero sí `invoiceId`, lo recuperan de FiscalAPI
+    probando tres endpoints.
+  - Y cuando lo recuperan **lo vuelven a subir y guardan la URL** (~32998). O sea que **se
+    curan solas**: cada vez que Franco abra el XML o el PDF de una factura vieja, esa factura
+    queda reparada. Si alguna vez molesta, la cura sería un barrido que las toque todas de una,
+    pero hoy no hace falta.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
