@@ -800,17 +800,28 @@ volver a agregar la PWA.
   - **Lo que falta es ver el CFDI timbrado con ese payload.** Si vuelve a salir con la base
     completa, nuestro lado ya está bien y hay que reclamárselo a FiscalAPI con el CFDI en la
     mano. **No volver a tocar el código antes de ver ese resultado.**
-- **El botón REP todavía NO está en la pantalla de Facturación.** `FIX REP-SOLO-EN-PROPIEDAD`
-  (v173) lo agregó al detalle del cliente, que era lo que Franco pidió; de las tres pantallas
-  que pintan la fila de una factura, falta `renderFacturacion`. Son **dos** cambios, no uno:
-  el objeto `f` que arma esa pantalla (~30042) se construye a mano y **no incluye `metodoPago`**,
-  así que hay que agregarle el campo además del botón. Pendiente de que Franco lo pida.
-- **Firebase Storage bloquea por CORS la lectura de los XML desde el navegador.** Visto el
-  19-nov en la consola de Franco: `Access to fetch at firebasestorage.googleapis.com/...xml
-  from origin https://gestorrenta.com has been blocked by CORS policy: No
-  'Access-Control-Allow-Origin' header`. Ningún XML de las 14 facturas revisadas se pudo leer
-  desde Storage. Es configuración del bucket, no código. **Sin diagnosticar a fondo**; puede
-  estar afectando también al botón XML cuando el archivo no está en caché local.
+- ~~**El botón REP no está en las tres pantallas**~~ → **ARREGLADO v173-v174 (19-nov-2026)**,
+  `FIX REP-SOLO-EN-PROPIEDAD`. Las tres ya lo tienen. Control: los seis `data-action` de esa
+  fila dan **3** cada uno. La guardia de cada pantalla es distinta y a propósito: el detalle
+  del cliente excluye `_esHistorial` y Facturación excluye `fromRegistry` — en los dos casos
+  el abono no vive en `renta.abonos` y `abrirModalComplementoPago` no lo encontraría.
+- **Firebase Storage bloquea por CORS la lectura desde el navegador.** Visto el 19-nov en la
+  consola de Franco: `Access to fetch at firebasestorage.googleapis.com/...xml from origin
+  https://gestorrenta.com has been blocked by CORS policy: No 'Access-Control-Allow-Origin'
+  header`. **Es configuración del bucket, no código, y no se puede arreglar desde el repo**:
+  hay que correr `gsutil cors set cors.json gs://gestor-rentas.firebasestorage.app` o usar la
+  consola de Google Cloud. Lo que SÍ está medido, leyendo el código:
+  - **El botón XML NO está afectado.** `descargarXMLFactura` (~33014) y el del complemento
+    (~33891) usan `window.open`, que no pasa por CORS. Siguen funcionando.
+  - **Lo que sí rompe es el PDF.** `generarPDFFacturaLocal` (~32311) hace `fetch()` del XML
+    cuando no está en caché local, para armar un PDF fiel al CFDI. Con CORS bloqueado cae al
+    `catch`, deja un `console.warn` y **sigue con datos de respaldo**: en un dispositivo que no
+    timbró esa factura, el PDF sale menos fiel y nadie se entera. Hay una segunda red —
+    recuperar el XML desde FiscalAPI por `invoiceId`— así que no siempre se nota.
+  - **El logo del emisor en el PDF** (~32501) le pasa `logoStorageURL` directo a
+    `doc.addImage()`, envuelto en try/catch con `console.warn`. **No verificado** si falla por
+    CORS o porque jsPDF no acepta una URL; el síntoma sería un PDF sin logo en los
+    dispositivos que no tengan el `logoBase64` local.
   - El REP ya timbrado **no se corrige desde la app**: decisión de Franco (19-nov), lo arregla
     directo en el portal del SAT. Era el único afectado.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
