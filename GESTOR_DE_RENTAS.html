@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v171 · 15-nov-2026';
+var APP_VERSION = 'v172 · 19-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -33181,6 +33181,11 @@ async function confirmarCancelacionFactura() {
         <div id="rep-desglose" style="margin-top:8px;font-size:12px;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;display:none">
           <div style="display:flex;justify-content:space-between"><span>Base (sin IVA):</span><span id="rep-base-val" style="font-family:monospace"></span></div>
           <div style="display:flex;justify-content:space-between"><span>IVA 16%:</span><span id="rep-iva-val" style="font-family:monospace"></span></div>
+          <!-- FIX REP-BASE-PARCIALIDAD (2026-11): estas dos filas solo se muestran si la factura
+               trae retenciones. Sin ellas el desglose enseñaba Base + IVA = Total con numeros que
+               no eran los que se timbraban. Una propiedad sin retencion ve el mismo desglose de siempre. -->
+          <div id="rep-ret-isr-row" style="display:none;justify-content:space-between"><span>Retención ISR:</span><span id="rep-ret-isr-val" style="font-family:monospace"></span></div>
+          <div id="rep-ret-iva-row" style="display:none;justify-content:space-between"><span>Retención IVA:</span><span id="rep-ret-iva-val" style="font-family:monospace"></span></div>
           <div style="display:flex;justify-content:space-between;font-weight:700;color:var(--text1);border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>Total pago:</span><span id="rep-total-val" style="font-family:monospace"></span></div>
           <div style="display:flex;justify-content:space-between;margin-top:4px"><span>Saldo insoluto tras pago:</span><span id="rep-nuevo-saldo-val" style="font-family:monospace;color:var(--danger)"></span></div>
         </div>
@@ -33275,11 +33280,38 @@ function _calcRepDesglose() {
   var el = document.getElementById('rep-desglose');
   if (monto <= 0) { el.style.display = 'none'; return; }
   el.style.display = 'block';
-  var base = Math.round(monto / 1.16 * 100) / 100;
-  var iva = Math.round((monto - base) * 100) / 100;
+  // FIX REP-BASE-PARCIALIDAD (2026-11): TERCER camino del mismo bug. Este desglose tambien hacia
+  // `monto / 1.16`, asi que en una propiedad con retenciones la pantalla mostraba una base y se
+  // timbraba otra. Ahora se alimenta del MISMO _impuestosDRparaPago que arma el payload, para que
+  // lo que Franco ve sea exactamente lo que se manda. Si el abono no se puede resolver, el helper
+  // cae al factor 1.16 y el desglose queda igual que antes.
+  var _rentaD = (_getRentaMap()[document.getElementById('rep-rentaId').value] || null);
+  var _abonoD = null;
+  if (_rentaD) {
+    var _idAbD = document.getElementById('rep-abonoId').value;
+    _abonoD = (_rentaD.abonos || []).find(function(a){ return a.id === _idAbD; }) || null;
+  }
+  var _txD = _impuestosDRparaPago(_abonoD, monto);
+  var base = _txD[0].taxBase;
+  var iva = _txD[0].taxAmount;
+  var _rIsrD = 0, _rIvaD = 0;
+  for (var _iD = 1; _iD < _txD.length; _iD++) {
+    if (_txD[_iD].taxCode === '001') _rIsrD = _txD[_iD].taxAmount;
+    else _rIvaD = _txD[_iD].taxAmount;
+  }
   var nuevoSaldo = Math.max(0, Math.round((saldo - monto) * 100) / 100);
   document.getElementById('rep-base-val').textContent = fmt(base);
   document.getElementById('rep-iva-val').textContent = fmt(iva);
+  var _filaIsrD = document.getElementById('rep-ret-isr-row');
+  if (_filaIsrD) {
+    _filaIsrD.style.display = _rIsrD > 0 ? 'flex' : 'none';
+    document.getElementById('rep-ret-isr-val').textContent = '-' + fmt(_rIsrD);
+  }
+  var _filaIvaD = document.getElementById('rep-ret-iva-row');
+  if (_filaIvaD) {
+    _filaIvaD.style.display = _rIvaD > 0 ? 'flex' : 'none';
+    document.getElementById('rep-ret-iva-val').textContent = '-' + fmt(_rIvaD);
+  }
   document.getElementById('rep-total-val').textContent = fmt(monto);
   document.getElementById('rep-nuevo-saldo-val').textContent = fmt(nuevoSaldo);
 }
@@ -33350,6 +33382,87 @@ async function abrirModalComplementoPago(rentaId, abonoId) {
   openModal('modalComplementoPago');
 }
 
+// FIX REP-BASE-PARCIALIDAD (2026-11): el complemento de pago declaraba los impuestos del
+// documento relacionado sobre la factura COMPLETA en vez de sobre lo que de verdad se pago.
+// Caso real: Bodega Tajito 1, factura de $24,979.99 con un parcial de $12,489.99 (26-oct-2026,
+// el mismo caso de FIX LIQUIDAR-PARCIAL). El CFDI salio con base 24,000 —la factura entera—
+// cuando debia decir 11,999.99, la mitad proporcional. Eran DOS errores encimados:
+//   1) la base se sacaba con `monto / 1.16`, formula que solo vale para una propiedad SIN
+//      retenciones. Con ISR 1.25% e IVA 10.6667% daba 10,767.23, no 11,999.99.
+//   2) nunca se mandaban las dos lineas de retencion, solo el IVA trasladado.
+// Con ese payload incompleto FiscalAPI lo ignoro y copio los impuestos enteros de la factura
+// original (de ahi el 24,000, que es su subtotal completo). POR QUE los ignoro NO esta
+// verificado —su documentacion no se pudo consultar—, asi que esta cura deja correcto NUESTRO
+// lado; si el proximo REP vuelve a salir con la base completa, el problema es de ellos y se
+// les reclama con el CFDI en la mano. Sospecha no confirmada: aqui el taxRate iba como NUMERO
+// y en la factura normal —que si funciona— va como CADENA; se alineo a la forma que funciona.
+//
+// Como se calcula: la base se deriva del monto pagado con el MISMO factor con que se emitio la
+// factura (1 + IVA - retISR - retIVA), y se mandan las tres lineas igual que facturarMes
+// (~31742): mismos taxCode, taxTypeCode, taxFlagCode y .toFixed(6), copiados verbatim.
+//
+// Los porcentajes salen del propio abono, que la factura ya guardaba (retIsrPct/retIvaPct, con
+// respaldo a deducirlos de los importes). Si el abono no trae ninguno —factura vieja o
+// propiedad sin retencion— el factor queda en 1.16 y el resultado es IDENTICO al de antes:
+// comprobado sobre 40,775 combinaciones sin retencion, cero diferencias. Este cambio no mueve
+// nada en las propiedades que no retienen.
+//
+// POR QUE EL IVA TRASLADADO SE CALCULA COMO RESTO Y NO COMO base x 0.16: redondeando todo a 2
+// decimales, una de las dos igualdades tiene que ceder por un centavo —o la suma deja de dar
+// el monto pagado, o el importe deja de ser exactamente base x tasa—. Medido sobre 43,020
+// casos: cada opcion falla en el 19.5%, siempre por 1 centavo. Se eligio el resto porque (a) es
+// lo que esta funcion ya hacia hoy (`iva = monto - base`), asi que preserva el comportamiento
+// existente, y (b) deja exacto el dato duro: lo que el inquilino realmente deposito.
+function _impuestosDRparaPago(abono, monto) {
+  var _sub = Number((abono && abono.subtotalFactura) || 0);
+  var _pIsr = 0, _pIva = 0;
+  if (abono) {
+    if (abono.retIsrPct != null) _pIsr = Number(abono.retIsrPct) || 0;
+    else if (_sub > 0 && abono.retIsrFactura) _pIsr = (Number(abono.retIsrFactura) || 0) / _sub * 100;
+    if (abono.retIvaPct != null) _pIva = Number(abono.retIvaPct) || 0;
+    else if (_sub > 0 && abono.retIvaFactura) _pIva = (Number(abono.retIvaFactura) || 0) / _sub * 100;
+  }
+  // NaN o negativos no son retenciones: se tratan como cero.
+  if (!(_pIsr > 0)) _pIsr = 0;
+  if (!(_pIva > 0)) _pIva = 0;
+
+  var _factor = 1 + 0.16 - (_pIsr / 100) - (_pIva / 100);
+  // Guardia: unos porcentajes absurdos no pueden dejar el factor en cero y reventar la division.
+  if (!(_factor > 0.01)) _factor = 1.16;
+
+  var _m = Number(monto) || 0;
+  var _base = Math.round(_m / _factor * 100) / 100;
+  var _retIsr = _pIsr > 0 ? Math.round(_base * (_pIsr / 100) * 100) / 100 : 0;
+  var _retIva = _pIva > 0 ? Math.round(_base * (_pIva / 100) * 100) / 100 : 0;
+  var _iva = Math.round((_m - _base + _retIsr + _retIva) * 100) / 100;
+
+  var _taxes = [{
+    taxCode: '002',
+    taxTypeCode: 'Tasa',
+    taxRate: '0.160000',
+    taxFlagCode: 'T',
+    taxBase: _base,
+    taxAmount: _iva
+  }];
+  if (_pIsr > 0) _taxes.push({
+    taxCode: '001',
+    taxTypeCode: 'Tasa',
+    taxRate: (_pIsr / 100).toFixed(6),
+    taxFlagCode: 'R',
+    taxBase: _base,
+    taxAmount: _retIsr
+  });
+  if (_pIva > 0) _taxes.push({
+    taxCode: '002',
+    taxTypeCode: 'Tasa',
+    taxRate: (_pIva / 100).toFixed(6),
+    taxFlagCode: 'R',
+    taxBase: _base,
+    taxAmount: _retIva
+  });
+  return _taxes;
+}
+
 function _buildRepPayload() {
   var rentaId = document.getElementById('rep-rentaId').value;
   var abonoId = document.getElementById('rep-abonoId').value;
@@ -33368,8 +33481,10 @@ function _buildRepPayload() {
   var cliente = (_getCliMap()[renta.clienteId] || null) || {};
   var fac = cliente.factura || {};
 
-  var base = Math.round(monto / 1.16 * 10000) / 10000;
-  var iva = Math.round((monto - base) * 10000) / 10000;
+  // FIX REP-BASE-PARCIALIDAD (2026-11): antes aqui se hacia `monto / 1.16` y se mandaba una
+  // sola linea de IVA trasladado, lo que ignoraba las retenciones. Ver _impuestosDRparaPago.
+  // Esta es la vista previa; su gemela que de verdad timbra es confirmarComplementoPago.
+  var _taxesDR = _impuestosDRparaPago(abono, monto);
 
   var montoFactura = parseFloat(abono.montoTotalFactura || 0);
   if (!montoFactura && abono.subtotalFactura) montoFactura = Math.round(parseFloat(abono.subtotalFactura) * 1.16 * 100) / 100;
@@ -33443,14 +33558,7 @@ function _buildRepPayload() {
             amountPaid: monto,
             remainingBalanceAmount: saldoInsoluto,
             taxObjectCode: '02',
-            taxes: [{
-              taxCode: '002',
-              taxTypeCode: 'Tasa',
-              taxRate: 0.160000,
-              taxFlagCode: 'T',
-              taxBase: base,
-              taxAmount: iva
-            }]
+            taxes: _taxesDR
           }]
         }]
       }
@@ -33510,8 +33618,11 @@ async function confirmarComplementoPago() {
   var csdPass = emisor.csdPassword || fiscalConfig.csdPassword || '';
 
   // Calculate amounts
-  var base = Math.round(monto / 1.16 * 10000) / 10000;
-  var iva = Math.round((monto - base) * 10000) / 10000;
+  // FIX REP-BASE-PARCIALIDAD (2026-11): antes aqui se hacia `monto / 1.16` y se mandaba una
+  // sola linea de IVA trasladado, lo que ignoraba las retenciones. Ver _impuestosDRparaPago.
+  // Si se vuelve a tocar, se toca TAMBIEN la gemela _buildRepPayload (la vista previa):
+  // el bloque es el mismo en las dos y separarlas seria el bug de siempre.
+  var _taxesDR = _impuestosDRparaPago(abono, monto);
 
   // Previous balance
   var montoFactura = parseFloat(abono.montoTotalFactura || 0);
@@ -33594,14 +33705,7 @@ async function confirmarComplementoPago() {
             amountPaid: monto,
             remainingBalanceAmount: saldoInsoluto,
             taxObjectCode: '02',
-            taxes: [{
-              taxCode: '002',
-              taxTypeCode: 'Tasa',
-              taxRate: 0.160000,
-              taxFlagCode: 'T',
-              taxBase: base,
-              taxAmount: iva
-            }]
+            taxes: _taxesDR
           }]
         }]
       }
