@@ -222,7 +222,7 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
 `FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
-`FIX CLIENTE-SIN-REINTENTO`.
+`FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -689,6 +689,19 @@ bloquea el timbrado**— y la primera entrega tocó uno solo. Es el mismo error 
 dos veces en este archivo. Antes de dar por cerrado el cambio de un número, **`grep` del campo**
 y cuenta cuántos lo pintan.
 
+Y por cuarta vez, el 19-nov-2026 con `FIX REP-BASE-PARCIALIDAD`: la base del complemento de pago
+se calculaba en **tres** lugares, no en dos. Dos saltaron a la primera búsqueda
+(`confirmarComplementoPago` y su vista previa `_buildRepPayload`, idénticos); el tercero
+—`_calcRepDesglose`, el desglose que se ve en el modal mientras tecleas— **se escapó porque
+redondeaba distinto**: los dos primeros decían `* 10000) / 10000` y ése `* 100) / 100`. Contar
+las coincidencias de la línea completa daba 2 y parecía cerrado.
+
+> **Cuando cuentes copias de una fórmula, busca por el núcleo, no por la línea entera.**
+> `grep "monto / 1.16"` daba 3; `grep` de la línea completa daba 2. Una diferencia de redondeo,
+> un comentario o un espacio bastan para esconder la copia que falta. Y el que se escapó era el
+> que se le muestra al usuario: la pantalla habría enseñado una base y se habría timbrado otra
+> — el desacuerdo entre pantallas que LA TERCERA LECCIÓN dice que es un bug, no una cifra.
+
 ---
 
 # DESPLIEGUE (lo hace Franco)
@@ -746,6 +759,26 @@ volver a agregar la PWA.
   Detalle que costó una segunda pasada y conviene recordar: **la foto para deshacer se toma
   ANTES de `registrarSalidaInquilino`**. Tomada después, al deshacer queda la ficha del
   saliente archivada Y el mismo inquilino activo a la vez, con sus pagos contados dos veces.
+- **El complemento de pago: falta confirmar que FiscalAPI respete lo que le mandamos.**
+  `FIX REP-BASE-PARCIALIDAD` (v172, 19-nov-2026) arregló **nuestro** lado, pero la mitad del
+  caso sigue abierta. Lo que se sabe, separado por lo que está verificado y lo que no:
+  - **Verificado:** en el REP de Bodega Tajito 1 (26-oct, factura $24,979.99 pagada a la mitad)
+    nuestra app mandaba **una sola** línea de impuesto, IVA trasladado con base `monto/1.16`
+    = 10,767.23, y **cero retenciones**. El CFDI salió con base **24,000** y **tres** líneas
+    (IVA 3,840, ret ISR 300, ret IVA 2,560.008), que son los impuestos **completos** de la
+    factura original: 24,000 + 3,840 − 300 − 2,560.01 = 24,979.99, el saldo anterior exacto.
+    Mandamos un número y dos líneas que no aparecen, y aparecieron tres que no mandamos:
+    **FiscalAPI ignoró nuestro bloque y lo rehízo desde el UUID, sin prorratear.**
+  - **NO verificado: por qué lo ignoró.** La documentación de FiscalAPI no se pudo consultar
+    (el dominio no resuelve desde la sesión). El bloque del REP ya traía una nota del autor
+    —*"si falla, verifica los nombres de campos en relatedDocuments"*— así que la duda es
+    vieja. Sospecha sin confirmar: el `taxRate` iba como **número** en el REP y como **cadena**
+    en la factura normal, que sí funciona; la v172 lo alineó a la forma que funciona.
+  - **La prueba es el próximo REP de una propiedad con retención.** Si vuelve a salir con la
+    base completa, nuestro lado ya está bien y hay que reclamárselo a FiscalAPI con el CFDI
+    en la mano. **No volver a tocar el código antes de ver ese resultado.**
+  - El REP ya timbrado **no se corrige desde la app**: decisión de Franco (19-nov), lo arregla
+    directo en el portal del SAT. Era el único afectado.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
