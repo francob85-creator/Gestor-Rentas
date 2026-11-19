@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v172 · 19-nov-2026';
+var APP_VERSION = 'v173 · 19-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -16687,7 +16687,18 @@ function renderDetalleCliente(id) {
               + '<button data-action="descargarPDFFactura" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:var(--danger);color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;font-weight:600">PDF</button>'
               + '<button data-action="descargarXMLFactura" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer">XML</button>'
               + '<button data-action="cargarXMLManual" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:none;border:1px solid var(--text3);color:var(--text3);border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer" title="Cargar XML manual del SAT">📤</button>'
-              + '<button data-action="cancelarFactura" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:#7f1d1d;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;font-weight:600">\u2715</button></div>'
+              + '<button data-action="cancelarFactura" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:#7f1d1d;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;font-weight:600">\u2715</button>'
+              // FIX REP-SOLO-EN-PROPIEDAD (2026-11): la fila de una factura timbrada se pinta en TRES
+              // lugares \u2014_renderDetalleAbonosTable (propiedad), aqui (cliente) y renderFacturacion\u2014
+              // con los mismos botones, pero el REP solo se habia agregado al primero. Caso real:
+              // Bodega Tajito 1, noviembre 2026, metodoPago PPD correcto, y desde la pantalla del
+              // cliente no habia forma de generar el complemento. El boton es copia verbatim del de
+              // _renderDetalleAbonosTable (~17033), con la misma condicion.
+              // Se excluyen los abonos de inquilinos archivados (_esHistorial): abrirModalComplementoPago
+              // busca solo en renta.abonos, igual que _resolverAbonoFactura, asi que ahi no los
+              // encontraria y el boton no haria nada. Mejor no ofrecerlo que ofrecerlo muerto.
+              + (a.metodoPago === 'PPD' && !a._esHistorial && hasPerm('factura_write') ? '<button data-action="abrirModalComplementoPago" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;font-weight:600">REP</button>' : '')
+              + '</div>'
             : (hasPerm('factura_write') && c.factura
                 ? '<button data-action="facturarAbono" data-arg="' + _rid + '" data-arg2="' + _aid + '" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap">\ud83e\uddfe Facturar</button>'
                 : '\u2014')) + '</td>'
