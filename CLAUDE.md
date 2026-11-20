@@ -223,7 +223,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
 `FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
 `FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`, `FIX REP-SOLO-EN-PROPIEDAD`,
-`FIX XML-CAMPO-BASE64FILE`, `FIX PDF-QR-SOLO-LOCAL`.
+`FIX XML-CAMPO-BASE64FILE`, `FIX PDF-QR-SOLO-LOCAL`, `FIX FECHA-PAGO`,
+`FIX FECHA-PAGO-EN-REPORTES`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -900,6 +901,24 @@ volver a agregar la PWA.
     **Se le planteó a Franco el 20-nov y eligió sólo el arreglo chico.** Antes de proponerlo
     otra vez habría que verificar el formato exacto de la URL del SAT contra un QR real suyo,
     no de memoria. Mientras tanto, una factura vieja con QR se baja del portal del SAT.
+- ~~**Los reportes ponían la fecha de EMISIÓN en la columna "Fecha de Pago"**~~ → **ARREGLADO
+  v177 (20-nov-2026)**, `FIX FECHA-PAGO-EN-REPORTES`. En un abono facturado hay **dos** fechas:
+  `fecha` (emisión de la factura) y `fechaPago` (cobro). Los reportes leían la primera, y como
+  las seis facturas de noviembre se emitieron todas el 3-nov, el Excel decía que las seis se
+  pagaron ese día. Nueva `_pagosRealesDeAbono(abono)`: devuelve un depósito por cada pago real,
+  con la precedencia de `getStatusRenta` (~14069) copiada verbatim — último pago a cuenta →
+  `fechaPago` → `fecha`.
+  **Decisión de Franco (20-nov)**: una factura cobrada en dos partes produce **dos filas**, no
+  la suma; y sin cobrar la fila sale con **raya y cero**, en vez de la contradicción que tenía
+  (Javier Hernández salía pagando $14,299.99 y debiendo $14,299.63 en la misma fila).
+  **Se tocaron CINCO caminos**: `descargarReportePagos`, `generarReporteMensual`,
+  `_buildReciboHTML` y los **dos** recibos de WhatsApp (uno dentro de `_buildReciboHTML`, otro
+  en `enviarReciboWhatsApp`), estos vía la gemela `_textoFechasPago`. Los recibos van juntos a
+  propósito: si el PDF y el de WhatsApp sacaran la fecha de sitios distintos, volverían a
+  desacordar.
+  **Quedan DOS lugares con el mismo síntoma, no tocados por estar fuera de lo autorizado**:
+  `verDesgloseFactura` (~20580, la fila "#1" del desglose) y `verComprobante` (~20641, el pie
+  de la imagen). Si se tocan, se usa `_pagosRealesDeAbono`, no una copia nueva de la regla.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
