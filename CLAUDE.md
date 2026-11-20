@@ -224,7 +224,7 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
 `FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`, `FIX REP-SOLO-EN-PROPIEDAD`,
 `FIX XML-CAMPO-BASE64FILE`, `FIX PDF-QR-SOLO-LOCAL`, `FIX FECHA-PAGO`,
-`FIX FECHA-PAGO-EN-REPORTES`.
+`FIX FECHA-PAGO-EN-REPORTES`, `FIX REPORTE-DATOS-FACTURA`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -919,6 +919,29 @@ volver a agregar la PWA.
   **Quedan DOS lugares con el mismo síntoma, no tocados por estar fuera de lo autorizado**:
   `verDesgloseFactura` (~20580, la fila "#1" del desglose) y `verComprobante` (~20641, el pie
   de la imagen). Si se tocan, se usa `_pagosRealesDeAbono`, no una copia nueva de la regla.
+- 🔴 **ABIERTO Y SIN EXPLICAR (20-nov-2026): los datos fiscales del cliente viven en DOS objetos
+  distintos, y las dos funciones del REP leen el que está vacío.** Salió de paso al agregar las
+  columnas de factura al reporte; **no se tocó nada.**
+  - **Verificado, con `grep`:** `facturarMes` (~31221), `enviarFacturaWhatsApp` (~32316) y
+    `generarPDFFacturaLocal` (~32570) leen **`cliente.facturacion`**. En cambio
+    `_buildRepPayload` (~33639) y `confirmarComplementoPago` (~33772) leen **`cliente.factura`**.
+    Son dos objetos diferentes, no dos nombres del mismo.
+  - **Verificado, en el payload real que Franco abrió el 19-nov** (Bodega Tajito 1 / ECOENERGY):
+    salió `"tin": "[RFC_RECEPTOR]"` —el texto de relleno— y `"zipCode": ""`. O sea que para ese
+    cliente **`cliente.factura` no tiene `rfc` ni `cp`**. El `legalName` sí salió bien porque esa
+    línea cae a `cliente.nombre` cuando falta la razón social.
+  - **Inferido, NO comprobado:** `confirmarComplementoPago` hace
+    `if (!fac.rfc) return showAlert('El cliente no tiene RFC registrado.')` **antes** de mandar
+    nada, así que al pulsar "Timbrar Complemento" debería detenerse ahí. La guardia es anterior
+    al `fetch`, de modo que probarlo **no timbra ni gasta nada**.
+  - **Lo que NO cuadra y hay que resolver antes de tocar:** el REP de octubre de ESE MISMO
+    cliente **sí se timbró** (CFDI con receptor EMO240410JQ0), y el código es el mismo. O
+    `cliente.factura` tenía datos entonces y se perdió, o hay algo que no vi. **No arreglar
+    hasta entender esto**: cambiar `factura` por `facturacion` a ciegas podría romper a los
+    clientes que sí usan el objeto viejo.
+  - **Cómo medirlo sin exponer nada:** en la consola, comprobar para cada cliente si
+    `cliente.factura` y `cliente.facturacion` existen y si traen `rfc`, imprimiendo **sólo
+    nombres y longitudes**, nunca los valores (son datos fiscales de terceros).
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
