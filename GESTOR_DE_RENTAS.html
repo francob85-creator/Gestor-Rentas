@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v176 · 20-nov-2026';
+var APP_VERSION = 'v177 · 20-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -23238,6 +23238,60 @@ function abrirReporteMensual() {
   openModal('modalReporteMensual');
 }
 
+// FIX FECHA-PAGO-EN-REPORTES (2026-11): en un abono facturado hay DOS fechas distintas —
+// `fecha` es cuando se EMITIO la factura y `fechaPago` cuando se COBRO— y los reportes leian
+// la primera en una columna titulada "Fecha de Pago". Caso real: las seis facturas de
+// noviembre se emitieron todas el 3-nov, asi que el Excel decia que las seis se pagaron el
+// mismo dia. La unica fila correcta era la de una propiedad NO facturada, donde `fecha` si es
+// la del pago.
+// Peor aun: tampoco miraban `pendientePago`, asi que una factura sin cobrar salia con fecha de
+// pago Y con su monto completo en "Monto Pagado", en la misma fila que la declaraba a deber esa
+// cantidad en "Saldo Pendiente". La fila se contradecia sola.
+// La app YA sabia distinguirlas: la pantalla de la propiedad lo hace desde FIX FECHA-PAGO
+// (2026-06) y getStatusRenta tambien. Lo que faltaba era que los reportes se enteraran.
+//
+// Esta funcion devuelve los depositos REALES, uno por cada pago que de verdad ocurrio, para
+// que cada fila del reporte sea un cobro y la columna sume bien. Decision de Franco (20-nov):
+// una propiedad cobrada en dos partes debe mostrar los dos pagos, no la suma.
+// La precedencia de la fecha es la MISMA que usa getStatusRenta (~14069), copiada verbatim:
+// ultimo pago a cuenta -> fechaPago -> fecha.
+function _pagosRealesDeAbono(abono) {
+  if (!abono) return [];
+  // Cobrado en partes: cada deposito vive en pagosAcuenta con su propia fecha, monto y forma de
+  // pago. Es la fuente mas fiel — y un pago total posterior tambien deja aqui su liquidacion
+  // (ver FIX LIQUIDAR-PARCIAL), asi que no se pierde ninguno.
+  if (abono.pagosAcuenta && abono.pagosAcuenta.length) {
+    return abono.pagosAcuenta.map(function(p) {
+      return {
+        fecha:  p.fecha || abono.fechaPago || abono.fecha || '',
+        monto:  Number(p.monto) || 0,
+        metodo: p.metodo || abono.metodo || ''
+      };
+    });
+  }
+  // Facturado y todavia sin cobrar: NO hubo pago. Devolver vacio es lo que evita la fila
+  // contradictoria. Ojo con el orden: un parcial tiene pendientePago en true Y pagosAcuenta
+  // con entradas, y esos pagos SI ocurrieron — por eso este if va DESPUES del de arriba.
+  if (abono.pendientePago) return [];
+  // Pago en una sola exhibicion. `fechaPago` es la buena cuando existe; si no, `fecha`, que en
+  // un abono NO facturado ya es la fecha del pago (por eso esas filas no cambian).
+  return [{
+    fecha:  abono.fechaPago || abono.fecha || '',
+    monto:  Number(abono.monto) || 0,
+    metodo: abono.metodo || ''
+  }];
+}
+
+// Version de una sola linea, para los recibos que van por WhatsApp (texto plano, sin HTML).
+// Misma fuente que _pagosRealesDeAbono: si el recibo en PDF y el de WhatsApp sacaran la fecha
+// de sitios distintos volverian a desacordar, que es justo el bug que esto cura.
+function _textoFechasPago(abono) {
+  var _p = _pagosRealesDeAbono(abono);
+  if (!_p.length) return 'Pendiente de pago';
+  if (_p.length === 1) return fmtDate(_p[0].fecha);
+  return _p.map(function(x){ return fmtDate(x.fecha) + ' (' + fmt(x.monto) + ')'; }).join(' + ');
+}
+
 async function generarReporteMensual() {
   try {
 
@@ -23261,7 +23315,13 @@ async function generarReporteMensual() {
     var _montoMesH1 = _montoEfectivoEnMes(renta, mes);
     if (abonosMes.length > 0) {
       abonosMes.forEach(function(a) {
-        cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':_montoMesH1,'Fecha de pago':a.fecha||'—','Monto cobrado':Number(a.monto)||0,'Forma de pago':a.metodo||(fp?fp.nombre:'—'),'Nota':a.nota||'','CFDI':a.uuid?'Timbrada':(a.cancelada?'Cancelada':'—') });
+        // FIX FECHA-PAGO-EN-REPORTES (2026-11): una fila por deposito real, con la fecha en que
+        // se cobro — no la de emision de la factura. Ver _pagosRealesDeAbono.
+        var _pgsM = _pagosRealesDeAbono(a);
+        var _flsM = _pgsM.length ? _pgsM : [{ fecha:'', monto:0, metodo:'' }];
+        _flsM.forEach(function(_p, _i) {
+          cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':_montoMesH1,'Fecha de pago':_p.fecha||'—','Monto cobrado':_p.monto,'Forma de pago':_p.metodo||a.metodo||(fp?fp.nombre:'—'),'Nota':(_flsM.length>1?'Pago '+(_i+1)+' de '+_flsM.length+' · ':'')+(a.nota||''),'CFDI':a.uuid?'Timbrada':(a.cancelada?'Cancelada':'—') });
+        });
       });
     } else if (renta.clienteId) {
       cobros.push({ 'Propiedad':renta.nombre,'Inquilino':cliente,'Renta mensual':_montoMesH1,'Fecha de pago':'—','Monto cobrado':0,'Forma de pago':fp?fp.nombre:'—','Nota':'Sin pago registrado','CFDI':'—' });
@@ -23370,6 +23430,13 @@ async function descargarReportePagos() {
       });
     } else {
       [...(renta.abonos || [])].sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); }).forEach(function(abono) {
+        // FIX FECHA-PAGO-EN-REPORTES (2026-11): una fila por deposito real. Un abono cobrado en
+        // dos partes produce DOS filas, cada una con su fecha y su monto, para que la columna
+        // "Monto Pagado" sume de verdad lo cobrado. Ver _pagosRealesDeAbono.
+        var _pgsD = _pagosRealesDeAbono(abono);
+        var _flsD = _pgsD.length ? _pgsD : [{ fecha:'', monto:0, metodo:'' }];
+        _flsD.forEach(function(_p, _i) {
+        var _metodoFila = _p.metodo || abono.metodo || '';
         detalle.push({
           'Propiedad':      renta.nombre,
           'Tipo':           renta.tipo || 'Otro',
@@ -23379,15 +23446,16 @@ async function descargarReportePagos() {
           // actual, una fila de marzo mostraba el monto posterior al incremento junto al pago real
           // de marzo, y la fila no cuadraba consigo misma.
           'Renta Mensual':  _montoEfectivoEnMes(renta, abono.mes || mesActual),
-          'Fecha de Pago':  abono.fecha || '—',
+          'Fecha de Pago':  _p.fecha || '—',
           'Mes Aplicado':   abono.mes   || '—',
-          'Monto Pagado':   Number(abono.monto) || 0,
-          'Forma de Pago':  abono.metodo ? abono.metodo.replace(/^[\S]+\s/,'') : fpNombre,
-          'Nota':           abono.nota   || '',
+          'Monto Pagado':   _p.monto,
+          'Forma de Pago':  _metodoFila ? _metodoFila.replace(/^[\S]+\s/,'') : fpNombre,
+          'Nota':           (_flsD.length > 1 ? 'Pago ' + (_i+1) + ' de ' + _flsD.length + ' · ' : '') + (abono.nota || ''),
           'Estado':         st.estado === 'sin-rentar' ? 'Sin rentar' :
                             st.estado === 'atrasado'   ? 'Atrasado'   :
                             st.estado === 'parcial'    ? 'Parcial'    : 'Al día',
           'Saldo Pendiente': st.saldo,
+        });
         });
       });
     }
@@ -25455,7 +25523,17 @@ async function _buildReciboHTML(rentaId, abonoId) {
   <div class="section">
     <div class="section-title">📋 Datos del pago</div>
     <div class="row"><span class="label">Mes que aplica</span><span class="value accent">${mesFormateado}</span></div>
-    <div class="row"><span class="label">Fecha de pago</span><span class="value">${fmtDate(abono.fecha)}</span></div>
+    ${(function(){
+      // FIX FECHA-PAGO-EN-REPORTES (2026-11): el recibo decia "Fecha de pago" y mostraba la de
+      // EMISION de la factura. Ahora muestra la del cobro, y si se pago en partes las enlista
+      // todas con su monto — decision de Franco (20-nov). Ver _pagosRealesDeAbono.
+      var _pgR = _pagosRealesDeAbono(abono);
+      if (!_pgR.length) return '<div class="row"><span class="label">Fecha de pago</span><span class="value">Pendiente de pago</span></div>';
+      if (_pgR.length === 1) return '<div class="row"><span class="label">Fecha de pago</span><span class="value">' + fmtDate(_pgR[0].fecha) + '</span></div>';
+      return _pgR.map(function(p, i){
+        return '<div class="row"><span class="label">Pago ' + (i+1) + ' de ' + _pgR.length + '</span><span class="value">' + fmtDate(p.fecha) + ' · ' + fmt(p.monto) + '</span></div>';
+      }).join('');
+    })()}
     <div class="row"><span class="label">Forma de pago</span><span class="value">${escHtml(abono.metodo || '—')}</span></div>
     ${abono.nota ? `<div class="row"><span class="label">Concepto / Nota</span><span class="value" style="max-width:60%;text-align:right">${escHtml(abono.nota||"")}</span></div>` : ''}
   </div>
@@ -25491,7 +25569,7 @@ async function _buildReciboHTML(rentaId, abonoId) {
     <button class="btn-print" data-action="windowPrint">🖨️ Imprimir / PDF</button>
     <button class="btn-wa" onclick="
       var tel='${clienteTel}'.replace(/[^0-9]/g,'');
-      var msg='🏠 *Recibo de Pago*%0A━━━━━━━━━━━━━━━━━━%0A📋 *Folio:* ${folio}%0A💰 *Monto:* ${fmt(montoNum)}%0A📅 *Mes:* ${mesFormateado}%0A🗓️ *Fecha:* ${fmtDate(abono.fecha)}%0A💳 *Forma de pago:* ${(abono.metodo||'—').replace(/'/g,'')}%0A🏠 *Propiedad:* ${renta.nombre.replace(/'/g,'')}%0A👤 *Inquilino:* ${clienteNombre.replace(/'/g,'')}%0A━━━━━━━━━━━━━━━━━━%0A✅ Pago recibido. Gracias.';
+      var msg='🏠 *Recibo de Pago*%0A━━━━━━━━━━━━━━━━━━%0A📋 *Folio:* ${folio}%0A💰 *Monto:* ${fmt(montoNum)}%0A📅 *Mes:* ${mesFormateado}%0A🗓️ *Fecha:* ${_textoFechasPago(abono)}%0A💳 *Forma de pago:* ${(abono.metodo||'—').replace(/'/g,'')}%0A🏠 *Propiedad:* ${renta.nombre.replace(/'/g,'')}%0A👤 *Inquilino:* ${clienteNombre.replace(/'/g,'')}%0A━━━━━━━━━━━━━━━━━━%0A✅ Pago recibido. Gracias.';
       var url='https://wa.me/'+(tel.length>=10?(tel.startsWith('52')?tel:'52'+tel):'')+'?text='+msg;
       window.open(url,'_blank');
     ">💬 WhatsApp</button>
@@ -25520,7 +25598,7 @@ async function enviarReciboWhatsApp(rentaId, abonoId) {
   var mesParts = (abono.mes || '').split('-');
   var mesesNombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   var mesFormateado = mesParts.length === 2 ? mesesNombres[parseInt(mesParts[1])] + ' ' + mesParts[0] : abono.mes || '';
-  var msg = `🏠 *Recibo de Pago*%0A━━━━━━━━━━━━━━━━━━%0A📋 *Folio:* ${folio}%0A💰 *Monto:* ${fmt(montoNum)}%0A📅 *Mes:* ${mesFormateado}%0A🗓️ *Fecha:* ${fmtDate(abono.fecha)}%0A💳 *Forma de pago:* ${(abono.metodo||'—').replace(/'/g,'')}%0A🏠 *Propiedad:* ${renta.nombre.replace(/'/g,'')}%0A👤 *Inquilino:* ${cliente.nombre.replace(/'/g,'')}%0A━━━━━━━━━━━━━━━━━━%0A✅ Pago recibido. Gracias.`;
+  var msg = `🏠 *Recibo de Pago*%0A━━━━━━━━━━━━━━━━━━%0A📋 *Folio:* ${folio}%0A💰 *Monto:* ${fmt(montoNum)}%0A📅 *Mes:* ${mesFormateado}%0A🗓️ *Fecha:* ${_textoFechasPago(abono)}%0A💳 *Forma de pago:* ${(abono.metodo||'—').replace(/'/g,'')}%0A🏠 *Propiedad:* ${renta.nombre.replace(/'/g,'')}%0A👤 *Inquilino:* ${cliente.nombre.replace(/'/g,'')}%0A━━━━━━━━━━━━━━━━━━%0A✅ Pago recibido. Gracias.`;
   window.open(`https://wa.me/${telFull}?text=${msg}`, '_blank');
   } catch(e) { showAlert('Error al enviar recibo:\n' + (e.message||e), 'error'); }
 }
