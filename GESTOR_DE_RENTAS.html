@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v175 · 20-nov-2026';
+var APP_VERSION = 'v176 · 20-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -32772,8 +32772,45 @@ async function generarPDFFacturaLocal(renta, abono, _returnBase64) {
     doc.setTextColor(C2[0],C2[1],C2[2]); y += 9;
 
     var qrSize = 28;
+    // FIX PDF-QR-SOLO-LOCAL (2026-11): el PDF miraba UNICAMENTE abono.qrBase64 y nunca
+    // abono.qrStorageURL, aunque el QR si se sube a Storage al timbrar (~32144) y la URL si se
+    // guarda en el abono. Y _stripAbonoForSync borra qrBase64 antes de subir a Firestore SIN
+    // dejar marca, asi que en cualquier dispositivo que no haya timbrado esa factura el QR
+    // desaparecia y el PDF salia sin el. Mismo patron que el XML: el dato existe, pero el punto
+    // donde se usa no lo busca.
+    // OJO con el formato: el QR se SUBE como JPEG (ver ~32144, '_qr.jpg') mientras que aqui se
+    // dibujaba declarando 'PNG' a secas. Ahora el formato se deduce del propio data URL, que al
+    // venir de un blob trae el tipo real. Para el camino de siempre (qrBase64 crudo) se arma
+    // 'data:image/png;base64,' igual que antes, asi que ese caso no cambia.
+    // NO cubre las facturas viejas que no tienen QR en ninguna parte: FiscalAPI no lo devuelve
+    // una vez timbrada (medido: /qr y /qrcode dan 404, y `responses` vuelve vacio). Para esas
+    // haria falta generarlo, que es otra tarea y necesita una libreria.
+    var _qrDataPdf = '';
     if (abono.qrBase64) {
-      try { doc.addImage('data:image/png;base64,'+abono.qrBase64, 'PNG', margin+2, y, qrSize, qrSize); } catch(qe) { console.warn('QR:', qe); }
+      _qrDataPdf = abono.qrBase64.indexOf('data:') === 0
+        ? abono.qrBase64
+        : ('data:image/png;base64,' + abono.qrBase64);
+    } else if (abono.qrStorageURL) {
+      try {
+        var _qrResp = await fetchWithTimeout(abono.qrStorageURL, {}, 15000);
+        if (_qrResp.ok) {
+          var _qrBlob = await _qrResp.blob();
+          _qrDataPdf = await new Promise(function(_res) {
+            var _fr = new FileReader();
+            _fr.onloadend = function(){ _res(String(_fr.result || '')); };
+            _fr.onerror   = function(){ _res(''); };
+            _fr.readAsDataURL(_qrBlob);
+          });
+        } else {
+          console.warn('[PDF] El QR en Storage respondio HTTP ' + _qrResp.status + ' — el PDF sale sin QR.');
+        }
+      } catch(_qrErr) {
+        console.warn('[PDF] No se pudo bajar el QR de Storage: ' + _qrErr.message + ' — el PDF sale sin QR.');
+      }
+    }
+    if (_qrDataPdf) {
+      var _qrFmt = (_qrDataPdf.indexOf('image/jpeg') > 0 || _qrDataPdf.indexOf('image/jpg') > 0) ? 'JPEG' : 'PNG';
+      try { doc.addImage(_qrDataPdf, _qrFmt, margin+2, y, qrSize, qrSize); } catch(qe) { console.warn('QR:', qe); }
     }
     var qrEndY = y + qrSize + 2;
 
