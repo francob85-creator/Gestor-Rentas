@@ -222,7 +222,8 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX CARRERA-BORRADO`, `FIX BAJA-SIN-ARCHIVAR`, `FIX MONTO-VIGENTE`, `FIX MONTO-HISTORICO`,
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
 `FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
-`FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`, `FIX REP-SOLO-EN-PROPIEDAD`.
+`FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`, `FIX REP-SOLO-EN-PROPIEDAD`,
+`FIX XML-CAMPO-BASE64FILE`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -681,6 +682,35 @@ in state"*, pero quien la llama descarta el valor si viene en base64 — o sea, 
 seguridad no está conectada**. Un comentario no es una garantía: sigue el valor de retorno hasta
 donde se usa.
 
+## Una red de seguridad que nadie vio funcionar nunca, no funciona
+
+El 19-nov-2026 le dije a Franco que las facturas sin XML **"se curan solas"**, porque el código
+tiene un rescate que lo baja de FiscalAPI y lo vuelve a subir a Storage. Franco picó el botón y
+le salió un error. **Mi afirmación era falsa y la probó en diez segundos.** Ese rescate llevaba
+desde que se escribió sin funcionar una sola vez (`FIX XML-CAMPO-BASE64FILE`, v175).
+
+La causa era **una palabra**: FiscalAPI devuelve el XML en `base64File` y el código buscaba
+`fileBase64`. Y el nombre bueno **ya estaba en el archivo**: es el mismo con que esta app le
+manda el CSD al timbrar. Estaba a la vista desde el principio.
+
+Tres cosas que vale la pena no volver a aprender:
+
+- **Un `try` con varios intentos que guarda el ÚLTIMO error miente sobre cuál falló.** El bucle
+  probaba `/xml`, `/file` y la ruta base. La primera **devolvía el XML correctamente**, pero
+  como el nombre del campo no se reconocía seguía de largo sin registrar nada; la segunda daba
+  404 y ésa fue la que se le enseñó al usuario. El aviso decía *"verifica que la factura exista
+  y que tu API key tenga permisos"* — las dos cosas falsas. **Si pruebas varias rutas, guarda
+  por qué falló cada una, no sólo la última.**
+- **Preguntarle a la API e imprimir sólo los NOMBRES de los campos** cerró el caso en un
+  intento, sin tocar código y sin exponer nada. Tres `fetch` desde la consola de Franco,
+  imprimiendo `Object.keys()` con el tipo y el largo de cada valor — nunca la llave ni el
+  contenido. Ahí saltó `base64File(string len=7464)`. **Cuando no sepas cómo contesta un
+  servicio, pregúntale en vez de deducirlo; y pide los nombres, no los datos.**
+- **No digas que una red de seguridad funciona si no la has visto atrapar algo.** Yo leí el
+  código del rescate, vi que subía el archivo de vuelta y lo di por bueno. Leerlo no es verlo
+  correr. Lo correcto habría sido: *"hay un rescate que debería curarlas; no lo he visto
+  funcionar, pruébalo con una"*.
+
 ## Otra vez: protege TODOS los caminos
 
 El contador de timbres se muestra en **cuatro** lugares —el modal de facturar, la tarjeta grande
@@ -841,10 +871,14 @@ volver a agregar la PWA.
   - `descargarXMLFactura` (~32959) y `generarPDFFacturaLocal` (~32324) tienen una **tercera**
     red: si no hay XML local ni en Storage pero sí `invoiceId`, lo recuperan de FiscalAPI
     probando tres endpoints.
-  - Y cuando lo recuperan **lo vuelven a subir y guardan la URL** (~32998). O sea que **se
-    curan solas**: cada vez que Franco abra el XML o el PDF de una factura vieja, esa factura
-    queda reparada. Si alguna vez molesta, la cura sería un barrido que las toque todas de una,
-    pero hoy no hace falta.
+  - Y cuando lo recuperan **lo vuelven a subir y guardan la URL**. O sea que **se curan solas**:
+    cada vez que Franco abra el XML o el PDF de una factura vieja, esa factura queda reparada.
+  - ⚠️ **Ese rescate estuvo roto todo el tiempo y se arregló en la v175**
+    (`FIX XML-CAMPO-BASE64FILE`): buscaba el campo `fileBase64` y FiscalAPI lo manda en
+    `base64File`. Lo afirmé como funcionando **antes** de verlo correr y Franco lo desmintió al
+    primer clic. **A partir de la v175 sí deberían curarse solas, pero eso tampoco está
+    confirmado en vivo todavía** — lo estará cuando Franco abra el XML de una factura vieja y
+    después el script de revisión la muestre con su `CFDI:` leído desde Storage.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
