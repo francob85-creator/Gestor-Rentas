@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v177 · 20-nov-2026';
+var APP_VERSION = 'v178 · 20-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -23409,6 +23409,18 @@ async function descargarReportePagos() {
     var fp = renta.formaPagoId ? (_getFPMap()[renta.formaPagoId] || null) : null;
     var fpNombre = fp ? fp.nombre : '—';
 
+    // FIX REPORTE-DATOS-FACTURA (2026-11): el nombre que aparece EN la factura es la razon social
+    // fiscal del cliente, que puede no ser su nombre comun en la app. Se lee igual que
+    // facturarMes (~31221), que es quien de verdad timbra: cliente.facturacion.razon, con el
+    // nombre comun como respaldo. Se consulta tambien cliente.factura porque las dos formas
+    // conviven en el archivo (ver la nota del pendiente sobre los dos objetos fiscales).
+    // LIMITACION CONOCIDA: la razon social NO se guarda dentro del abono, asi que esta columna
+    // muestra la de HOY. Si se edito despues de facturar, una fila vieja mostrara la nueva.
+    var _cliObjRep = renta.clienteId ? (_getCliMap()[renta.clienteId] || null) : null;
+    var _razonFiscal = _cliObjRep
+      ? (((_cliObjRep.facturacion || {}).razon) || ((_cliObjRep.factura || {}).razon) || _cliObjRep.nombre || '')
+      : '';
+
     if ((renta.abonos || []).length === 0) {
       // Property with no payments at all
       detalle.push({
@@ -23422,6 +23434,12 @@ async function descargarReportePagos() {
         'Mes Aplicado':   '—',
         'Monto Pagado':   0,
         'Forma de Pago':  fpNombre,
+        // Las tres columnas de factura van tambien aqui, con raya: json_to_sheet arma el orden
+        // de los encabezados con las llaves del PRIMER objeto que las trae, asi que si esta rama
+        // las omitiera quedarian pegadas al final y los anchos de '!cols' se desalinearian.
+        'Fecha Factura':    '—',
+        'Cliente Facturado':'—',
+        'Folio Factura':    '—',
         'Nota':           '',
         'Estado':         st.estado === 'sin-rentar' ? 'Sin rentar' :
                           st.estado === 'atrasado'   ? 'Atrasado'   :
@@ -23435,6 +23453,15 @@ async function descargarReportePagos() {
         // "Monto Pagado" sume de verdad lo cobrado. Ver _pagosRealesDeAbono.
         var _pgsD = _pagosRealesDeAbono(abono);
         var _flsD = _pgsD.length ? _pgsD : [{ fecha:'', monto:0, metodo:'' }];
+        // FIX REPORTE-DATOS-FACTURA (2026-11): datos de la factura, solo si la hay.
+        // La fecha de EMISION es `facturadoEn`, no `fecha`: en una factura hecha sobre un abono
+        // que ya existia (facturarAbono), `fecha` sigue siendo la del pago y solo `facturadoEn`
+        // marca cuando se timbro. Se recorta a 10 con el mismo patron que ya usa el historial
+        // (~20701) y el recibo de WhatsApp.
+        var _hayFac   = !!abono.uuid;
+        var _fechaFac = _hayFac ? ((abono.facturadoEn || '').slice(0,10) || abono.fecha || '—') : '—';
+        var _razonFac = _hayFac ? (_razonFiscal || '—') : '—';
+        var _folioFac = _hayFac ? (abono.folioFiscal || '—') : '—';
         _flsD.forEach(function(_p, _i) {
         var _metodoFila = _p.metodo || abono.metodo || '';
         detalle.push({
@@ -23450,6 +23477,9 @@ async function descargarReportePagos() {
           'Mes Aplicado':   abono.mes   || '—',
           'Monto Pagado':   _p.monto,
           'Forma de Pago':  _metodoFila ? _metodoFila.replace(/^[\S]+\s/,'') : fpNombre,
+          'Fecha Factura':    _fechaFac,
+          'Cliente Facturado':_razonFac,
+          'Folio Factura':    _folioFac,
           'Nota':           (_flsD.length > 1 ? 'Pago ' + (_i+1) + ' de ' + _flsD.length + ' · ' : '') + (abono.nota || ''),
           'Estado':         st.estado === 'sin-rentar' ? 'Sin rentar' :
                             st.estado === 'atrasado'   ? 'Atrasado'   :
@@ -23466,10 +23496,14 @@ async function descargarReportePagos() {
 
   var ws1 = XLSX.utils.json_to_sheet(detalle);
 
-  // Column widths for sheet 1
+  // Column widths for sheet 1 — van POR POSICION, asi que al agregar una columna hay que
+  // agregar su ancho aqui en el mismo lugar o se desalinean todas las de la derecha.
+  // Orden: Propiedad, Tipo, Cliente, Renta Mensual, Fecha de Pago, Mes Aplicado, Monto Pagado,
+  //        Forma de Pago, Fecha Factura, Cliente Facturado, Folio Factura, Nota, Estado, Saldo.
   ws1['!cols'] = [
     {wch:32}, {wch:14}, {wch:22}, {wch:14},
     {wch:14}, {wch:12}, {wch:14}, {wch:18},
+    {wch:14}, {wch:30}, {wch:24},
     {wch:20}, {wch:12}, {wch:14},
   ];
 
