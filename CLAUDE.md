@@ -223,7 +223,7 @@ Etiquetas en uso: `FIX FP-UNION`, `FIX TP-UNION`, `BORRADO-DURABLE`, `FIX FOSIL-
 `FIX REP-SIN-TIMBRE`, `FIX GUARDIA-TIMBRES-FALSA`, `FIX ICONO-PWA-CHROME`,
 `FIX PWA-MUERE-CON-FIREBASE`, `FIX NUEVA-SE-BORRA`, `FIX CAMBIO-ORDEN-DESTRUCTIVO`, `FIX PWA-IDENTIDAD-POR-VERSION`,
 `FIX CLIENTE-SIN-REINTENTO`, `FIX REP-BASE-PARCIALIDAD`, `FIX REP-SOLO-EN-PROPIEDAD`,
-`FIX XML-CAMPO-BASE64FILE`.
+`FIX XML-CAMPO-BASE64FILE`, `FIX PDF-QR-SOLO-LOCAL`.
 
 > ⚠️ **`FIX CHROME-PASSWORD-PROMPT` se quitó de esta lista el 14-nov-2026: la etiqueta estaba
 > aquí pero NO existe en el archivo.** O el arreglo se revirtió y nadie se enteró, o nunca se
@@ -879,6 +879,27 @@ volver a agregar la PWA.
     primer clic. **A partir de la v175 sí deberían curarse solas, pero eso tampoco está
     confirmado en vivo todavía** — lo estará cuando Franco abra el XML de una factura vieja y
     después el script de revisión la muestre con su `CFDI:` leído desde Storage.
+- **El QR del PDF: arreglado a medias, y la otra mitad necesita tu decisión.**
+  - ✅ **Arreglado v176 (20-nov-2026)**, `FIX PDF-QR-SOLO-LOCAL`: el PDF miraba sólo
+    `abono.qrBase64` y **nunca** `abono.qrStorageURL`, aunque el QR sí se sube a Storage al
+    timbrar. Como `_stripAbonoForSync` borra `qrBase64` **sin dejar marca**, en cualquier
+    dispositivo que no hubiera timbrado la factura el PDF salía sin QR. Mismo patrón que el XML.
+  - De paso salió que el QR **se sube como JPEG** (`_qr.jpg`) y el PDF lo dibujaba declarando
+    `'PNG'`. Ahora el formato se deduce del data URL real.
+  - ❌ **Lo que NO arregla: las facturas viejas que no tienen QR en ninguna parte.**
+    **Medido con tres rutas**, no inferido: `/api/v4/invoices/{id}/qr` → 404,
+    `/api/v4/invoices/{id}/qrcode` → 404, y en `/api/v4/invoices/{id}` el campo `responses`
+    —que es de donde la app saca el QR al timbrar (`invoiceBase64QrCode`)— **vuelve vacío,
+    `array[0]`**. O sea: **FiscalAPI no devuelve el QR de una factura ya timbrada.** Se llena
+    en el momento del timbrado y después se pierde.
+  - **La única salida sería generarlo nosotros.** El QR del SAT es una URL fija con el UUID,
+    los dos RFC, el total y los últimos 8 del sello — todo está en el XML, que desde la v175
+    sí se recupera. Pero **la app no sabe dibujar un QR**: nunca lo ha hecho, siempre se lo
+    pidió a FiscalAPI. Haría falta **una librería nueva**, local al lado de `jspdf.umd.min.js`
+    (**nunca un servicio externo**: mandaría UUID y RFC de los clientes a un tercero).
+    **Se le planteó a Franco el 20-nov y eligió sólo el arreglo chico.** Antes de proponerlo
+    otra vez habría que verificar el formato exacto de la URL del SAT contra un QR real suyo,
+    no de memoria. Mientras tanto, una factura vieja con QR se baja del portal del SAT.
 - **La ñ y los acentos llegan rotos al CFDI** (`Torreón` → `TorreÃ³n`). **No es de la app**: el
   texto sale limpio y vuelve dañado (ver LA CUARTA LECCIÓN). Se añadió `charset=utf-8` a las dos
   peticiones de timbrado y **no sirvió**: FiscalAPI lo ignora y lee el cuerpo como Latin-1.
