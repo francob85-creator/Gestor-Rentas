@@ -4121,7 +4121,7 @@ function _loadDocx(callback) {
 // para verificar de un vistazo qué versión corre cada dispositivo y
 // detectar de inmediato una PWA con código viejo cacheado.
 // ============================================================
-var APP_VERSION = 'v174 · 19-nov-2026';
+var APP_VERSION = 'v175 · 20-nov-2026';
 try {
   console.log('[App] GestorRenta ' + APP_VERSION);
   var _verLoginEl = document.getElementById('app-version-login');
@@ -32343,8 +32343,11 @@ async function generarPDFFacturaLocal(renta, abono, _returnBase64) {
               _rspData = null;
             }
             if (_rspData) {
-              _xmlFromApi = (_rspData.invoiceBase64 || _rspData.xmlBase64 || _rspData.fileBase64 || _rspData.base64 ||
-                            (_rspData.data && (_rspData.data.invoiceBase64 || _rspData.data.xmlBase64 || _rspData.data.fileBase64 || _rspData.data.base64))) || '';
+              // FIX XML-CAMPO-BASE64FILE (2026-11): FiscalAPI devuelve el XML en `base64File`, no
+              // en `fileBase64`. Gemelo del bloque de descargarXMLFactura (~32987), donde esta la
+              // explicacion completa y la medicion que lo demostro. Se tocan los dos o ninguno.
+              _xmlFromApi = (_rspData.base64File || _rspData.invoiceBase64 || _rspData.xmlBase64 || _rspData.fileBase64 || _rspData.base64 ||
+                            (_rspData.data && (_rspData.data.base64File || _rspData.data.invoiceBase64 || _rspData.data.xmlBase64 || _rspData.data.fileBase64 || _rspData.data.base64))) || '';
             }
           } catch(_epErr) { /* continuar al siguiente */ }
         }
@@ -32984,8 +32987,22 @@ async function descargarXMLFactura(rentaId, abonoId) {
             rspData = null;
           }
           if (rspData) {
-            xmlFromApi = (rspData.invoiceBase64 || rspData.xmlBase64 || rspData.fileBase64 || rspData.base64 ||
-                          (rspData.data && (rspData.data.invoiceBase64 || rspData.data.xmlBase64 || rspData.data.fileBase64 || rspData.data.base64))) || '';
+            // FIX XML-CAMPO-BASE64FILE (2026-11): la recuperacion del XML desde FiscalAPI NUNCA
+            // funciono. Medido en vivo contra live.fiscalapi.com con una factura real:
+            //   GET /api/v4/invoices/{id}/xml  -> HTTP 200, campos: base64File(len 7464),
+            //                                     fileName, fileExtension
+            //   GET /api/v4/invoices/{id}/file -> HTTP 404 (esa ruta no existe)
+            //   GET /api/v4/invoices/{id}      -> HTTP 200 pero solo metadatos, sin XML
+            // O sea que la PRIMERA ruta siempre trajo el XML. Lo unico que fallaba es que aqui se
+            // buscaba `fileBase64` y FiscalAPI lo manda en `base64File`: las dos palabras al reves.
+            // Como ningun nombre conocido aparecia, _lastErr se quedaba con el 404 de /file y el
+            // aviso al usuario culpaba a la API key, que nunca tuvo nada que ver.
+            // Corroboracion de que base64File es SU convencion: es el mismo nombre con que esta
+            // app le manda el CSD al timbrar (~31818 y ~33694).
+            // OJO: este bloque esta DUPLICADO en generarPDFFacturaLocal (~32346). Se tocan los dos
+            // o ninguno; separarlos seria el bug de siempre.
+            xmlFromApi = (rspData.base64File || rspData.invoiceBase64 || rspData.xmlBase64 || rspData.fileBase64 || rspData.base64 ||
+                          (rspData.data && (rspData.data.base64File || rspData.data.invoiceBase64 || rspData.data.xmlBase64 || rspData.data.fileBase64 || rspData.data.base64))) || '';
           }
         } catch(_endpointErr) { _lastErr = _endpointErr.message; }
       }
